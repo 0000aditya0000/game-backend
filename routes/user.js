@@ -427,6 +427,59 @@ router.put('/wallet/balance/set', async (req, res) => {
   }
 });
 
+router.get('/statistics', async (req, res) => {
+  try {
+    const dummyActivePlayers = 15000; 
+    const dummyPrizePool = 100000;
+    const dummyAverageRating = 4.3; 
+
+    const activePlayersQuery = "SELECT COUNT(*) as activePlayers FROM users WHERE kycstatus = 1"; 
+    const activePlayersResult = await new Promise((resolve, reject) => {
+      connection.query(activePlayersQuery, (err, results) => {
+        if (err) {
+          console.error('Error fetching active players:', err);
+          resolve(dummyActivePlayers); 
+        } else {
+          resolve(results[0]?.activePlayers || dummyActivePlayers); 
+        }
+      });
+    });
+
+
+    const prizePoolQuery = "SELECT SUM(balance) as prizePool FROM wallet WHERE cryptoname = 'INR'"; 
+    const prizePoolResult = await new Promise((resolve, reject) => {
+      connection.query(prizePoolQuery, (err, results) => {
+        if (err) {
+          console.error('Error fetching prize pool:', err);
+          resolve(dummyPrizePool); 
+        } else {
+          resolve(results[0]?.prizePool || dummyPrizePool); 
+        }
+      });
+    });
+
+    const ratingsQuery = "SELECT AVG(rating) as averageRating FROM ratings"; 
+    const ratingsResult = await new Promise((resolve, reject) => {
+      connection.query(ratingsQuery, (err, results) => {
+        if (err) {
+          console.error('Error fetching ratings:', err);
+          resolve(dummyAverageRating); 
+        } else {
+          resolve(results[0]?.averageRating || dummyAverageRating); 
+        }
+      });
+    });
+
+    res.status(200).json({
+      activePlayers: activePlayersResult,
+      prizePool: prizePoolResult,
+      averageRating: ratingsResult,
+    });
+  } catch (error) {
+    console.error('Error fetching statistics:', error);
+    res.status(500).json({ error: 'Error fetching statistics' });
+  }
+});
 
 
 module.exports = router;
