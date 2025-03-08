@@ -81,79 +81,72 @@ router.get("/prediction/:userid/history", async (req, res) => {
 });
 
 
+
+// Result route
 router.post("/result", async (req, res) => {
   try {
-    const { mins } = req.body; 
+    const { period, mins } = req.body;
 
-    const getLastPeriodQuery = `SELECT period FROM results ORDER BY period DESC LIMIT 1`;
-    connection.query(getLastPeriodQuery, async (err, result) => {
+    // Generate a random number between 0 and 9
+    const number = Math.floor(Math.random() * 10);
+
+    // Determine the small_big value based on the generated number
+    const small_big = number <= 4 ? "small" : "big";
+
+    // Determine the color based on the generated number
+    let color = "";
+    if (number === 0) {
+      color = "linear-gradient(135deg, #ef4444 50%, #8b5cf6 50%)";
+    } else if (number === 5) {
+      color = "linear-gradient(135deg, #10B981 50%, #8b5cf6 50%)";
+    } else if ([1, 3, 7, 9].includes(number)) {
+      color = "red";
+    } else if ([2, 4, 6, 8].includes(number)) {
+      color = "green";
+    }
+
+    // Insert the result into the results table
+    const query = `
+      INSERT INTO results (number, color, small_big, mins, period) 
+      VALUES (?, ?, ?, ?, ?)
+    `;
+    connection.query(query, [number, color, small_big, mins, period], async (err, results) => {
       if (err) {
         console.error(err);
-        return res.status(500).json({ error: "Database error while fetching last period" });
+        return res.status(500).json({ error: "Database error" });
       }
 
-      let lastPeriod = result.length > 0 ? parseInt(result[0].period, 10) : 0;
-      let newPeriod = lastPeriod + 1;
-
-      const number = Math.floor(Math.random() * 10);
-
-      const small_big = number <= 4 ? "small" : "big";
-
-      let color = "";
-      if (number === 0) {
-        color = "linear-gradient(135deg, #ef4444 50%, #8b5cf6 50%)";
-      } else if (number === 5) {
-        color = "linear-gradient(135deg, #10B981 50%, #8b5cf6 50%)";
-      } else if ([1, 3, 7, 9].includes(number)) {
-        color = "red";
-      } else if ([2, 4, 6, 8].includes(number)) {
-        color = "green";
-      }
-
-      const insertQuery = `
-        INSERT INTO results (number, color, small_big, mins, period) 
-        VALUES (?, ?, ?, ?, ?)
+      // Check if the period and number exist in the biddings table
+      const checkBiddingQuery = `
+        SELECT * 
+        FROM biddings 
+        WHERE period = ? AND JSON_CONTAINS(number, JSON_ARRAY(?))
       `;
-      connection.query(insertQuery, [number, color, small_big, mins, newPeriod], async (insertErr, insertResult) => {
-        if (insertErr) {
-          console.error(insertErr);
-          return res.status(500).json({ error: "Database error while inserting result" });
+      connection.query(checkBiddingQuery, [period, number], async (checkErr, checkResults) => {
+        if (checkErr) {
+          console.error(checkErr);
+          return res.status(500).json({ error: "Error checking biddings table" });
         }
 
-        const checkBiddingQuery = `
-          SELECT * 
-          FROM biddings 
-          WHERE period = ? AND JSON_CONTAINS(number, JSON_ARRAY(?))
-        `;
-        connection.query(checkBiddingQuery, [newPeriod, number], async (checkErr, checkResults) => {
-          if (checkErr) {
-            console.error(checkErr);
-            return res.status(500).json({ error: "Error checking biddings table" });
-          }
 
-          if (checkResults.length > 0) {
-            try {
-              const predictionResult = await WinPrediction(newPeriod, number);
-              console.log(predictionResult, "=== Processing Winners ===");
+        if (checkResults.length > 0) {
+          // Call the WinPrediction function if matching records are found
+          try {
+            const predictionResult = await WinPrediction(period, number);
+            console.log(predictionResult,"==============0000000000000");
 
-              return res.status(201).json({ 
-                message: "Result added successfully", 
-                period: newPeriod, 
-                results: insertResult, 
-                predictionResult 
-              });
-            } catch (predictionError) {
-              console.error(predictionError);
-              return res.status(500).json({ error: "Error processing winners" });
-            }
-          } else {
-            return res.status(201).json({ 
-              message: "Result added successfully", 
-              period: newPeriod, 
-              results: insertResult 
-            });
+            // Respond with a success message
+            return res
+              .status(201)
+              .json({ message: "Result added successfully", results, predictionResult });
+          } catch (predictionError) {
+            console.error(predictionError);
+            return res.status(500).json({ error: "Error processing winners" });
           }
-        });
+        } else {
+          // No matching records found, no need to call WinPrediction
+          return res.status(201).json({ message: "Result added successfully", results });
+        }
       });
     });
   } catch (error) {
@@ -163,7 +156,6 @@ router.post("/result", async (req, res) => {
 });
 
 
-
 const WinPrediction = async function (period, number) {
   try {
     const biddingQuery = `
@@ -171,51 +163,42 @@ const WinPrediction = async function (period, number) {
       FROM biddings 
       WHERE period = ? AND JSON_CONTAINS(number, JSON_ARRAY(?))
     `;
-
     return new Promise((resolve, reject) => {
-      connection.query(biddingQuery, [period, number], async (err, results) => {
+      connection.query(biddingQuery, [period, number], (err, results) => {
         if (err) {
           console.error(err);
           return reject(new Error("Database query error in biddings table"));
         }
 
         if (results.length === 0) {
-          return resolve({ message: "No winners for this period and number", winners: [] });
+          return resolve("No winners for this period and number");
         }
 
-        let winners = [];
-
         // Process each winner
-        for (const row of results) {
+        results.forEach((row) => {
           const { userid, amount } = row;
+
+          // Ensure amount is treated as a number
           const numericAmount = parseFloat(amount);
+
+          // Correct 90% calculation
           const totalAmount = numericAmount + numericAmount * 0.9;
 
+          // Update the user's wallet balance
           const walletQuery = `
             UPDATE wallet 
             SET balance = balance + ? 
             WHERE userid = ? AND cryptoname = 'cp'
           `;
+          connection.query(walletQuery, [totalAmount, userid], (walletErr) => {
+            if (walletErr) {
+              console.error(walletErr);
+              return reject(new Error("Database query error in wallet table"));
+            }
+          });
+        });
 
-          try {
-            await new Promise((resolveWallet, rejectWallet) => {
-              connection.query(walletQuery, [totalAmount, userid], (walletErr) => {
-                if (walletErr) {
-                  console.error(walletErr);
-                  return rejectWallet(new Error("Database query error in wallet table"));
-                }
-                resolveWallet();
-              });
-            });
-
-            // Add winner details to response
-            winners.push({ userid, amountWon: totalAmount });
-          } catch (walletError) {
-            return reject(walletError);
-          }
-        }
-
-        resolve({ message: "Winner processed successfully", winners });
+        resolve("Winners processed successfully");
       });
     });
   } catch (error) {
