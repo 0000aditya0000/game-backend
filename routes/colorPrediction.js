@@ -222,4 +222,36 @@ router.get("/result/:name",async(req,res)=>{
   }
 })
 
+router.post("/period", async (req, res) => {
+  const { mins } = req.body;
+  try {
+    const query = "SELECT period FROM results WHERE mins = ? ORDER BY period DESC LIMIT 1";
+    
+    connection.query(query, [mins], (err, result) => {
+      if (err) {
+        return res.status(500).json({ error: "Database error" });
+      }
+
+      let newPeriod;
+      if (result.length > 0 && result[0].period) {
+        // Latest period ko 1 increment karna hai
+        let lastPeriod = result[0].period;
+        let numberPart = parseInt(lastPeriod.slice(-3)) + 1;
+        newPeriod = lastPeriod.slice(0, -3) + numberPart.toString().padStart(3, '0');
+      } else {
+        // Naya period generate karna hai
+        const now = new Date();
+        const year = now.getFullYear();
+        const month = String(now.getMonth() + 1).padStart(2, '0');
+        const date = String(now.getDate()).padStart(2, '0');
+        newPeriod = `${year}${month}${date}0001`;
+      }
+
+      res.json({ period: newPeriod });
+    });
+  } catch (error) {
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
 module.exports = router;
