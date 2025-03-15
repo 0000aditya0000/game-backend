@@ -2,42 +2,50 @@ const express = require("express");
 const connection = require("../config/db"); // Ensure database connection is configured
 const router = express.Router();
 
-router.post("/prediction", async (req, res) => {
+// Place a bet
+router.post("/place-bet", async (req, res) => {
+  const { userId, betType, betValue, amount, periodNumber } = req.body;
+
   try {
-    console.log("================");
-    let { userid, amount, color, number, period, mins, small_big } = req.body;
-
-    // Check if all required fields are provided
-    if (!userid || !amount || !color || !number || !period || !mins) {
-      return res.status(400).json({ error: "Enter required fields" });
-    }
-
-    // Set default value for small_big if it is not provided
-    small_big = small_big || "NA";
-
-    // Convert the 'number' array to JSON string before inserting into the database
-    const numberJson = JSON.stringify(number);
-
-    // SQL query to insert into the 'biddings' table
-    const query =
-      "INSERT INTO biddings (userid, amount, color, number, period, mins, small_big) VALUES (?, ?, ?, ?, ?, ?, ?)";
-
-    connection.query(
-      query,
-      [userid, amount, color, numberJson, period, mins, small_big],
-      (err, result) => {
-        if (err) {
-          console.log(err);
-          return res.status(500).json({ error: "Database insertion error" });
-        }
-        res.status(201).json({
-          message: "Bidding placed successfully",
-          id: result.insertId, // This returns the auto-incremented id
-        });
+      // Validate input
+      if (!["number", "color", "size"].includes(betType)) {
+          return res.status(400).json({ error: "Invalid bet type." });
       }
-    );
+      if (isNaN(amount) || amount <= 0) {
+          return res.status(400).json({ error: "Invalid bet amount." });
+      }
+      if (isNaN(periodNumber) || periodNumber < 1) {
+          return res.status(400).json({ error: "Invalid period number." });
+      }
+
+      // Check user balance
+      const [user] = await pool.query("SELECT balance FROM users WHERE id = ?", [userId]);
+      if (user.length === 0) {
+          return res.status(404).json({ error: "User not found." });
+      }
+      if (Number(user[0].balance) < Number(amount)) {
+          console.log(user[0].balance);
+          console.log(amount);
+          
+          console.log(user[0].balance < amount);
+          
+          
+          return res.status(400).json({ error: "Insufficient balance." });
+      }
+
+      // Deduct amount from user balance
+      await pool.query("UPDATE users SET balance = balance - ? WHERE id = ?", [amount, userId]);
+
+      // Insert bet into database with period number
+      await pool.query(
+          "INSERT INTO bets (user_id, bet_type, bet_value, amount, period_number) VALUES (?, ?, ?, ?, ?)",
+          [userId, betType, betValue, amount, periodNumber]
+      );
+
+      res.json({ message: "Bet placed successfully." });
   } catch (error) {
-    res.status(500).json({ error: "Error placing bidding" });
+      console.error(error);
+      res.status(500).json({ error: "Internal server error." });
   }
 });
 
@@ -83,144 +91,178 @@ router.get("/prediction/:userid/history", async (req, res) => {
 
 
 // Result route
-router.post("/result", async (req, res) => {
+// Generate result and distribute winnings
+router.post("/generate-result", async (req, res) => {
+  const { periodNumber } = req.body;
+
   try {
-    const { period, mins } = req.body;
-
-    // Generate a random number between 0 and 9
-    const number = Math.floor(Math.random() * 10);
-
-    // Determine the small_big value based on the generated number
-    const small_big = number <= 4 ? "small" : "big";
-
-    // Determine the color based on the generated number
-    let color = "";
-    if (number === 0) {
-      color = "linear-gradient(135deg, #ef4444 50%, #8b5cf6 50%)";
-    } else if (number === 5) {
-      color = "linear-gradient(135deg, #10B981 50%, #8b5cf6 50%)";
-    } else if ([1, 3, 7, 9].includes(number)) {
-      color = "red";
-    } else if ([2, 4, 6, 8].includes(number)) {
-      color = "green";
-    }
-
-    // Insert the result into the results table
-    const query = `
-      INSERT INTO results (number, color, small_big, mins, period) 
-      VALUES (?, ?, ?, ?, ?)
-    `;
-    connection.query(query, [number, color, small_big, mins, period], async (err, results) => {
-      if (err) {
-        console.error(err);
-        return res.status(500).json({ error: "Database error" });
+      // Validate input
+      if (isNaN(periodNumber) || periodNumber < 1) {
+          return res.status(400).json({ error: "Invalid period number." });
       }
 
-      // Check if the period and number exist in the biddings table
-      const checkBiddingQuery = `
-        SELECT * 
-        FROM biddings 
-        WHERE period = ? AND JSON_CONTAINS(number, JSON_ARRAY(?))
-      `;
-      connection.query(checkBiddingQuery, [period, number], async (checkErr, checkResults) => {
-        if (checkErr) {
-          console.error(checkErr);
-          return res.status(500).json({ error: "Error checking biddings table" });
-        }
+      // Aggregate total bets by type and value for the specified period
+      const [numberBets] = await pool.execute(
+          "SELECT bet_value, SUM(amount) AS total_amount FROM bets WHERE bet_type = 'number' AND period_number = ? GROUP BY bet_value",
+          [periodNumber]
+      );
+      const [colorBets] = await pool.execute(
+          "SELECT bet_value, SUM(amount) AS total_amount FROM bets WHERE bet_type = 'color' AND period_number = ? GROUP BY bet_value",
+          [periodNumber]
+      );
+      const [sizeBets] = await pool.execute(
+          "SELECT bet_value, SUM(amount) AS total_amount FROM bets WHERE bet_type = 'size' AND period_number = ? GROUP BY bet_value",
+          [periodNumber]
+      );
 
+      // Helper function to find the value with the least total bet
+      function findLeastBetValue(bets) {
+          if (bets.length === 0) return null; // Return null if no bets are placed
+          return bets.reduce((min, bet) => (bet.total_amount < min.total_amount ? bet : min), { total_amount: Infinity }).bet_value;
+      }
 
-        if (checkResults.length > 0) {
-          // Call the WinPrediction function if matching records are found
-          try {
-            const predictionResult = await WinPrediction(period, number);
-            console.log(predictionResult,"==============0000000000000");
+      // Determine winning values using the helper function
+      let winningNumber = findLeastBetValue(numberBets);
+      let winningColor = findLeastBetValue(colorBets);
+      let winningSize = findLeastBetValue(sizeBets);
 
-            // Respond with a success message
-            return res
-              .status(201)
-              .json({ message: "Result added successfully", results, predictionResult });
-          } catch (predictionError) {
-            console.error(predictionError);
-            return res.status(500).json({ error: "Error processing winners" });
+      // Handle ties in total bet amounts for colors
+      if (colorBets.length > 1) {
+          // Check if total amounts are equal for all colors
+          const allEqual = colorBets.every((bet) => bet.total_amount === colorBets[0].total_amount);
+          if (allEqual) {
+              winningColor = "violet"; // Fallback to violet if total amounts are equal
           }
-        } else {
-          // No matching records found, no need to call WinPrediction
-          return res.status(201).json({ message: "Result added successfully", results });
-        }
+      }
+
+      // Ensure consistency between number, color, and size
+      if (winningColor === "violet") {
+          // If violet is the winning color, the winning number must be 0 or 5
+          winningNumber = [0, 5][Math.floor(Math.random() * 2)];
+      } else {
+          // Otherwise, adjust the winning number to match the winning color and size
+          if (!winningNumber || getColor(winningNumber) !== winningColor || getSize(winningNumber) !== winningSize) {
+              winningNumber = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9].find(
+                  (num) => getColor(num) === winningColor && getSize(num) === winningSize
+              );
+          }
+      }
+
+      // If no bets are placed for any type, generate random results
+      if (!winningNumber) {
+          winningNumber = Math.floor(Math.random() * 10); // Random number between 0 and 9
+      }
+      if (!winningColor) {
+          winningColor = ["red", "green", "violet"][Math.floor(Math.random() * 3)]; // Random color
+      }
+      if (!winningSize) {
+          winningSize = ["small", "big"][Math.floor(Math.random() * 2)]; // Random size
+      }
+
+      // Ensure the size matches the winning number
+      winningSize = getSize(winningNumber);
+
+      // Store result in database with period number
+      await pool.query(
+          "INSERT INTO results (result_number, result_color, result_size, period_number) VALUES (?, ?, ?, ?)",
+          [winningNumber, winningColor, winningSize, periodNumber]
+      );
+
+      // Distribute winnings for the specified period
+      const [bets] = await pool.query("SELECT * FROM bets WHERE period_number = ?", [periodNumber]);
+      for (const bet of bets) {
+          if (
+              (bet.bet_type === "number" && parseInt(bet.bet_value) === winningNumber) ||
+              (bet.bet_type === "color" && bet.bet_value === winningColor) ||
+              (bet.bet_type === "size" && bet.bet_value === winningSize)
+          ) {
+              const winnings = bet.amount * 1.9; // 90% return
+              await pool.query("UPDATE users SET balance = balance + ? WHERE id = ?", [winnings, bet.user_id]);
+          }
+      }
+
+      // Mark all bets for the specified period as processed
+      await pool.query("UPDATE bets SET status = 'processed' WHERE period_number = ?", [periodNumber]);
+
+      res.json({
+          message: "Result generated successfully.",
+          winningNumber,
+          winningColor,
+          winningSize,
+          periodNumber,
       });
-    });
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: "Error adding result" });
+      console.error(error);
+      res.status(500).json({ error: "Internal server error." });
   }
 });
 
 
-const WinPrediction = async function (period, number) {
-  try {
-    const biddingQuery = `
-      SELECT userid, amount 
-      FROM biddings 
-      WHERE period = ? AND JSON_CONTAINS(number, JSON_ARRAY(?))
-    `;
-    return new Promise((resolve, reject) => {
-      connection.query(biddingQuery, [period, number], (err, results) => {
-        if (err) {
-          console.error(err);
-          return reject(new Error("Database query error in biddings table"));
-        }
+// const WinPrediction = async function (period, number) {
+//   try {
+//     const biddingQuery = `
+//       SELECT userid, amount 
+//       FROM biddings 
+//       WHERE period = ? AND JSON_CONTAINS(number, JSON_ARRAY(?))
+//     `;
+//     return new Promise((resolve, reject) => {
+//       connection.query(biddingQuery, [period, number], (err, results) => {
+//         if (err) {
+//           console.error(err);
+//           return reject(new Error("Database query error in biddings table"));
+//         }
 
-        if (results.length === 0) {
-          return resolve("No winners for this period and number");
-        }
+//         if (results.length === 0) {
+//           return resolve("No winners for this period and number");
+//         }
 
-        // Process each winner
-        results.forEach((row) => {
-          const { userid, amount } = row;
+//         // Process each winner
+//         results.forEach((row) => {
+//           const { userid, amount } = row;
 
-          // Ensure amount is treated as a number
-          const numericAmount = parseFloat(amount);
+//           // Ensure amount is treated as a number
+//           const numericAmount = parseFloat(amount);
 
-          // Correct 90% calculation
-          const totalAmount = numericAmount + numericAmount * 0.9;
+//           // Correct 90% calculation
+//           const totalAmount = numericAmount + numericAmount * 0.9;
 
-          // Update the user's wallet balance
-          const walletQuery = `
-            UPDATE wallet 
-            SET balance = balance + ? 
-            WHERE userid = ? AND cryptoname = 'cp'
-          `;
-          connection.query(walletQuery, [totalAmount, userid], (walletErr) => {
-            if (walletErr) {
-              console.error(walletErr);
-              return reject(new Error("Database query error in wallet table"));
-            }
-          });
-        });
+//           // Update the user's wallet balance
+//           const walletQuery = `
+//             UPDATE wallet 
+//             SET balance = balance + ? 
+//             WHERE userid = ? AND cryptoname = 'cp'
+//           `;
+//           connection.query(walletQuery, [totalAmount, userid], (walletErr) => {
+//             if (walletErr) {
+//               console.error(walletErr);
+//               return reject(new Error("Database query error in wallet table"));
+//             }
+//           });
+//         });
 
-        resolve("Winners processed successfully");
-      });
-    });
-  } catch (error) {
-    console.error("Error in WinPrediction function:", error);
-    throw error;
-  }
-};
+//         resolve("Winners processed successfully");
+//       });
+//     });
+//   } catch (error) {
+//     console.error("Error in WinPrediction function:", error);
+//     throw error;
+//   }
+// };
 
 
 
-router.get("/result/:name",async(req,res)=>{
-  const Tablename = req.params.name
-  try {
-    const query = "SELECT * FROM results WHERE mins = ?  ORDER BY id DESC ";
-    connection.query(query,[Tablename],(err,result)=>{
-      if (err) return res.status(500).json({ error: 'Database query error' });
-      res.json(result);
-    })
-  } catch (error) {
-    res.status(500).json({ error: 'Error fetching data' });
-  }
-})
+// router.get("/result/:name",async(req,res)=>{
+//   const Tablename = req.params.name
+//   try {
+//     const query = "SELECT * FROM results WHERE mins = ?  ORDER BY id DESC ";y
+//     connection.query(query,[Tablename],(err,result)=>{
+//       if (err) return res.status(500).json({ error: 'Database query error' });
+//       res.json(result);
+//     })
+//   } catch (error) {
+//     res.status(500).json({ error: 'Error fetching data' });
+//   }
+// })
 
 router.post("/period", async (req, res) => {
   const { mins } = req.body;
@@ -251,6 +293,75 @@ router.post("/period", async (req, res) => {
     });
   } catch (error) {
     res.status(500).json({ error: "Server error" });
+  }
+});
+
+router.post("/bet-history", async (req, res) => {
+  const { userId } = req.body;
+
+  try {
+      // Validate input
+      if (!userId || isNaN(userId)) {
+          return res.status(400).json({ error: "Invalid user ID." });
+      }
+
+      // Query to fetch all bets placed by the user
+      const [bets] = await pool.query(
+          `
+          SELECT 
+              b.id AS bet_id,
+              b.period_number,
+              b.amount AS bet_amount,
+              b.bet_type,
+              b.bet_value,
+              b.status,
+              b.placed_at AS bet_date,
+              r.result_number,
+              r.result_color,
+              r.result_size
+          FROM bets b
+          LEFT JOIN results r ON b.period_number = r.period_number
+          WHERE b.user_id = ?
+          ORDER BY b.placed_at DESC
+          `,
+          [userId]
+      );
+
+      // Process the results to calculate status and winnings
+      const betHistory = bets.map((bet) => {
+          let status = "lost";
+          let amountReceived = 0;
+
+          // Determine if the bet was won
+          if (bet.status === "processed") {
+              if (
+                  (bet.bet_type === "number" && parseInt(bet.bet_value) === bet.result_number) ||
+                  (bet.bet_type === "color" && bet.bet_value === bet.result_color) ||
+                  (bet.bet_type === "size" && bet.bet_value === bet.result_size)
+              ) {
+                  status = "won";
+                  amountReceived = bet.bet_amount * 1.9; // 90% return
+              }
+          } else {
+              status = "pending"; // Bet has not been processed yet
+          }
+
+          return {
+              betId: bet.bet_id,
+              periodNumber: bet.period_number,
+              amount: bet.bet_amount,
+              betType: bet.bet_type,
+              betValue: bet.bet_value,
+              status: status,
+              amountReceived: amountReceived,
+              date: bet.bet_date,
+          };
+      });
+
+      res.json({ betHistory });
+  } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: "Internal server error." });
   }
 });
 
