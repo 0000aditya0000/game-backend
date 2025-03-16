@@ -1,5 +1,5 @@
 const express = require("express");
-const connection = require("../config/db"); // Ensure database connection is configured
+const pool = require("../config/db"); // Ensure database connection is configured
 const router = express.Router();
 
 // Place a bet
@@ -54,19 +54,19 @@ router.get("/prediction/:userid/history", async (req, res) => {
     const { userid } = req.params;
 
     const query = "SELECT * FROM biddings WHERE userid = ? ORDER BY id DESC";
-    connection.query(query, [userid], (err, results) => {
+    connection.query(query, [userid], (err, result) => {
       if (err) return res.status(500).json({ error: "Database query error" });
-      if (results.length === 0)
+      if (result.length === 0)
         return res.status(404).json({ error: "User not found" });
 
       // Query to fetch the results for the periods
-      const periodIds = results.map(bid => bid.period);
-      const resultsQuery = "SELECT * FROM results WHERE period IN (?)";
+      const periodIds = result.map(bid => bid.period);
+      const resultsQuery = "SELECT * FROM result WHERE period IN (?)";
       connection.query(resultsQuery, [periodIds], (err, resultRecords) => {
         if (err) return res.status(500).json({ error: "Database query error" });
 
         // Iterate over the biddings and determine win or lose
-        const historyWithOutcome = results.map(bid => {
+        const historyWithOutcome = result.map(bid => {
           // Parse the number array from the biddings table
           const numbersInBid = JSON.parse(bid.number); // Parse the stringified array
           const result = resultRecords.find(r => r.period === bid.period);
@@ -102,15 +102,15 @@ router.post("/generate-result", async (req, res) => {
       }
 
       // Aggregate total bets by type and value for the specified period
-      const [numberBets] = await pool.execute(
+      const [numberBets] = await pool.query(
           "SELECT bet_value, SUM(amount) AS total_amount FROM bets WHERE bet_type = 'number' AND period_number = ? GROUP BY bet_value",
           [periodNumber]
       );
-      const [colorBets] = await pool.execute(
+      const [colorBets] = await pool.query(
           "SELECT bet_value, SUM(amount) AS total_amount FROM bets WHERE bet_type = 'color' AND period_number = ? GROUP BY bet_value",
           [periodNumber]
       );
-      const [sizeBets] = await pool.execute(
+      const [sizeBets] = await pool.query(
           "SELECT bet_value, SUM(amount) AS total_amount FROM bets WHERE bet_type = 'size' AND period_number = ? GROUP BY bet_value",
           [periodNumber]
       );
@@ -164,7 +164,7 @@ router.post("/generate-result", async (req, res) => {
 
       // Store result in database with period number
       await pool.query(
-          "INSERT INTO results (result_number, result_color, result_size, period_number) VALUES (?, ?, ?, ?)",
+          "INSERT INTO result (result_number, result_color, result_size, period_number) VALUES (?, ?, ?, ?)",
           [winningNumber, winningColor, winningSize, periodNumber]
       );
 
@@ -267,7 +267,7 @@ router.post("/generate-result", async (req, res) => {
 router.post("/period", async (req, res) => {
   const { mins } = req.body;
   try {
-    const query = "SELECT period FROM results WHERE mins = ? ORDER BY period DESC LIMIT 1";
+    const query = "SELECT period_number FROM result WHERE mins = ? ORDER BY period_number DESC LIMIT 1";
     
     connection.query(query, [mins], (err, result) => {
       if (err) {
@@ -320,7 +320,7 @@ router.post("/bet-history", async (req, res) => {
               r.result_color,
               r.result_size
           FROM bets b
-          LEFT JOIN results r ON b.period_number = r.period_number
+          LEFT JOIN result r ON b.period_number = r.period_number
           WHERE b.user_id = ?
           ORDER BY b.placed_at DESC
           `,
