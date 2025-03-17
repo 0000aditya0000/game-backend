@@ -1,5 +1,5 @@
 const express = require("express");
-const pool = require("../config/db"); // Ensure database connection is configured
+const connection = require("../config/db"); // Ensure database connection is configured
 const router = express.Router();
 
 // Place a bet
@@ -19,7 +19,7 @@ router.post("/place-bet", async (req, res) => {
       }
 
       // Check user balance
-      const [user] = await pool.query("SELECT balance FROM users WHERE id = ?", [userId]);
+      const [user] = await connection.query("SELECT balance FROM users WHERE id = ?", [userId]);
       if (user.length === 0) {
           return res.status(404).json({ error: "User not found." });
       }
@@ -34,10 +34,10 @@ router.post("/place-bet", async (req, res) => {
       }
 
       // Deduct amount from user balance
-      await pool.query("UPDATE users SET balance = balance - ? WHERE id = ?", [amount, userId]);
+      await connection.query("UPDATE users SET balance = balance - ? WHERE id = ?", [amount, userId]);
 
       // Insert bet into database with period number
-      await pool.query(
+      await connection.query(
           "INSERT INTO bets (user_id, bet_type, bet_value, amount, period_number) VALUES (?, ?, ?, ?, ?)",
           [userId, betType, betValue, amount, periodNumber]
       );
@@ -54,19 +54,19 @@ router.get("/prediction/:userid/history", async (req, res) => {
     const { userid } = req.params;
 
     const query = "SELECT * FROM biddings WHERE userid = ? ORDER BY id DESC";
-    connection.query(query, [userid], (err, result) => {
+    connection.query(query, [userid], (err, results) => {
       if (err) return res.status(500).json({ error: "Database query error" });
-      if (result.length === 0)
+      if (results.length === 0)
         return res.status(404).json({ error: "User not found" });
 
       // Query to fetch the results for the periods
-      const periodIds = result.map(bid => bid.period);
-      const resultsQuery = "SELECT * FROM result WHERE period IN (?)";
+      const periodIds = results.map(bid => bid.period);
+      const resultsQuery = "SELECT * FROM results WHERE period IN (?)";
       connection.query(resultsQuery, [periodIds], (err, resultRecords) => {
         if (err) return res.status(500).json({ error: "Database query error" });
 
         // Iterate over the biddings and determine win or lose
-        const historyWithOutcome = result.map(bid => {
+        const historyWithOutcome = results.map(bid => {
           // Parse the number array from the biddings table
           const numbersInBid = JSON.parse(bid.number); // Parse the stringified array
           const result = resultRecords.find(r => r.period === bid.period);
@@ -100,20 +100,30 @@ router.post("/generate-result", async (req, res) => {
       if (isNaN(periodNumber) || periodNumber < 1) {
           return res.status(400).json({ error: "Invalid period number." });
       }
+    //   function getColor(number) {
+    //     const colors = ["red", "green", "violet"];
+    //     return colors[number % 3]; 
+    // }
+    
+    // function getSize(number) {
+    //     return number < 5 ? "small" : "big";
+    // }
+    
 
       // Aggregate total bets by type and value for the specified period
-      const [numberBets] = await pool.query(
-          "SELECT bet_value, SUM(amount) AS total_amount FROM bets WHERE bet_type = 'number' AND period_number = ? GROUP BY bet_value",
-          [periodNumber]
-      );
-      const [colorBets] = await pool.query(
-          "SELECT bet_value, SUM(amount) AS total_amount FROM bets WHERE bet_type = 'color' AND period_number = ? GROUP BY bet_value",
-          [periodNumber]
-      );
-      const [sizeBets] = await pool.query(
-          "SELECT bet_value, SUM(amount) AS total_amount FROM bets WHERE bet_type = 'size' AND period_number = ? GROUP BY bet_value",
-          [periodNumber]
-      );
+      const [numberBets = []] = await connection.execute(
+        "SELECT bet_value, SUM(amount) AS total_amount FROM bets WHERE bet_type = 'number' AND period_number = ? GROUP BY bet_value",
+        [periodNumber]
+    );
+    const [colorBets = []] = await connection.execute(
+        "SELECT bet_value, SUM(amount) AS total_amount FROM bets WHERE bet_type = 'color' AND period_number = ? GROUP BY bet_value",
+        [periodNumber]
+    );
+    const [sizeBets = []] = await connection.execute(
+        "SELECT bet_value, SUM(amount) AS total_amount FROM bets WHERE bet_type = 'size' AND period_number = ? GROUP BY bet_value",
+        [periodNumber]
+    );
+    
 
       // Helper function to find the value with the least total bet
       function findLeastBetValue(bets) {
@@ -163,13 +173,13 @@ router.post("/generate-result", async (req, res) => {
       winningSize = getSize(winningNumber);
 
       // Store result in database with period number
-      await pool.query(
-          "INSERT INTO result (result_number, result_color, result_size, period_number) VALUES (?, ?, ?, ?)",
-          [winningNumber, winningColor, winningSize, periodNumber]
+      await connection.query(
+          "INSERT INTO results (result_number, result_color, result_size, period_number,mins) VALUES (?, ?, ?, ?, ?)",
+          [winningNumber, winningColor, winningSize, periodNumber,1]
       );
 
       // Distribute winnings for the specified period
-      const [bets] = await pool.query("SELECT * FROM bets WHERE period_number = ?", [periodNumber]);
+      const [bets] = await connection.query("SELECT * FROM bets WHERE period_number = ?", [periodNumber]);
       for (const bet of bets) {
           if (
               (bet.bet_type === "number" && parseInt(bet.bet_value) === winningNumber) ||
@@ -177,12 +187,12 @@ router.post("/generate-result", async (req, res) => {
               (bet.bet_type === "size" && bet.bet_value === winningSize)
           ) {
               const winnings = bet.amount * 1.9; // 90% return
-              await pool.query("UPDATE users SET balance = balance + ? WHERE id = ?", [winnings, bet.user_id]);
+              await connection.query("UPDATE users SET balance = balance + ? WHERE id = ?", [winnings, bet.user_id]);
           }
       }
 
       // Mark all bets for the specified period as processed
-      await pool.query("UPDATE bets SET status = 'processed' WHERE period_number = ?", [periodNumber]);
+      await connection.query("UPDATE bets SET status = 'processed' WHERE period_number = ?", [periodNumber]);
 
       res.json({
           message: "Result generated successfully.",
@@ -267,7 +277,7 @@ router.post("/generate-result", async (req, res) => {
 router.post("/period", async (req, res) => {
   const { mins } = req.body;
   try {
-    const query = "SELECT period_number FROM result WHERE mins = ? ORDER BY period_number DESC LIMIT 1";
+    const query = "SELECT period FROM results WHERE mins = ? ORDER BY period DESC LIMIT 1";
     
     connection.query(query, [mins], (err, result) => {
       if (err) {
@@ -306,7 +316,7 @@ router.post("/bet-history", async (req, res) => {
       }
 
       // Query to fetch all bets placed by the user
-      const [bets] = await pool.query(
+      const [bets] = await connection.query(
           `
           SELECT 
               b.id AS bet_id,
@@ -320,7 +330,7 @@ router.post("/bet-history", async (req, res) => {
               r.result_color,
               r.result_size
           FROM bets b
-          LEFT JOIN result r ON b.period_number = r.period_number
+          LEFT JOIN results r ON b.period_number = r.period_number
           WHERE b.user_id = ?
           ORDER BY b.placed_at DESC
           `,
