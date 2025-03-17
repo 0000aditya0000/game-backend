@@ -113,9 +113,29 @@ router.post('/login', async (req, res) => {
 // Get all users
 router.get('/allusers', async (req, res) => {
   try {
-    const query = "SELECT * FROM users";
+    const query = `
+      SELECT 
+        u.*, 
+        COALESCE(
+          CONCAT('[', 
+            GROUP_CONCAT(
+              JSON_OBJECT('cryptoname', w.cryptoname, 'balance', w.balance)
+            ), 
+          ']'), 
+          '[]'
+        ) AS wallets
+      FROM users u
+      LEFT JOIN wallet w ON u.id = w.userId
+      GROUP BY u.id
+    `;
+
     connection.query(query, (err, results) => {
       if (err) return res.status(500).json({ error: 'Database query error' });
+
+      results.forEach(user => {
+        user.wallets = JSON.parse(user.wallets);
+      });
+
       res.json(results);
     });
   } catch (error) {

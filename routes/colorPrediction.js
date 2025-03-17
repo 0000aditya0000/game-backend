@@ -1,9 +1,32 @@
 const express = require("express");
-const connection = require("../config/db"); // Ensure database connection is configured
-const router = express.Router();
+const mysql = require("mysql2/promise");
+const bodyParser = require("body-parser");
+const cors = require("cors");
 
+const app = express();
+app.use(bodyParser.json());
+app.use(cors());
+
+// Database pool
+const pool = mysql.createPool({
+    host: "localhost",
+    user: "root", // Replace with your MySQL username
+    password: "", // Replace with your MySQL password
+    database: "stake",
+});
+
+function getColor(number) {
+  if ([1, 3, 7, 9].includes(number)) return "red";
+  if ([2, 4, 6, 8].includes(number)) return "green";
+  return "voilet";
+}
+
+// Helper function to get size based on number
+function getSize(number) {
+  return number < 5 ? "small" : "big";
+}
 // Place a bet
-router.post("/place-bet", async (req, res) => {
+app.post("/place-bet", async (req, res) => {
   const { userId, betType, betValue, amount, periodNumber } = req.body;
 
   try {
@@ -19,7 +42,14 @@ router.post("/place-bet", async (req, res) => {
       }
 
       // Check user balance
-      const [user] = await connection.query("SELECT balance FROM users WHERE id = ?", [userId]);
+      const [user] = await pool.query(
+        `SELECT u.*, w.balance 
+         FROM users u
+         LEFT JOIN wallet w ON u.id = w.userId AND w.cryptoname = 'INR'
+         WHERE u.id = ?`, 
+        [userId]
+      );
+      
       if (user.length === 0) {
           return res.status(404).json({ error: "User not found." });
       }
@@ -34,10 +64,17 @@ router.post("/place-bet", async (req, res) => {
       }
 
       // Deduct amount from user balance
-      await connection.query("UPDATE users SET balance = balance - ? WHERE id = ?", [amount, userId]);
+      await pool.query(
+        `UPDATE wallet w
+         JOIN users u ON u.id = w.userId
+         SET w.balance = w.balance - ?
+         WHERE w.userId = ? AND w.cryptoname = 'INR'`,
+        [amount, userId]
+      );
+      
 
       // Insert bet into database with period number
-      await connection.query(
+      await pool.query(
           "INSERT INTO bets (user_id, bet_type, bet_value, amount, period_number) VALUES (?, ?, ?, ?, ?)",
           [userId, betType, betValue, amount, periodNumber]
       );
@@ -49,12 +86,12 @@ router.post("/place-bet", async (req, res) => {
   }
 });
 
-router.get("/prediction/:userid/history", async (req, res) => {
+app.get("/prediction/:userid/history", async (req, res) => {
   try {
     const { userid } = req.params;
 
     const query = "SELECT * FROM biddings WHERE userid = ? ORDER BY id DESC";
-    connection.query(query, [userid], (err, results) => {
+    pool.query(query, [userid], (err, results) => {
       if (err) return res.status(500).json({ error: "Database query error" });
       if (results.length === 0)
         return res.status(404).json({ error: "User not found" });
@@ -62,7 +99,7 @@ router.get("/prediction/:userid/history", async (req, res) => {
       // Query to fetch the results for the periods
       const periodIds = results.map(bid => bid.period);
       const resultsQuery = "SELECT * FROM results WHERE period IN (?)";
-      connection.query(resultsQuery, [periodIds], (err, resultRecords) => {
+      pool.query(resultsQuery, [periodIds], (err, resultRecords) => {
         if (err) return res.status(500).json({ error: "Database query error" });
 
         // Iterate over the biddings and determine win or lose
@@ -88,11 +125,8 @@ router.get("/prediction/:userid/history", async (req, res) => {
   }
 });
 
-
-
-// Result route
 // Generate result and distribute winnings
-router.post("/generate-result", async (req, res) => {
+app.post("/generate-result", async (req, res) => {
   const { periodNumber } = req.body;
 
   try {
@@ -100,26 +134,16 @@ router.post("/generate-result", async (req, res) => {
       if (isNaN(periodNumber) || periodNumber < 1) {
           return res.status(400).json({ error: "Invalid period number." });
       }
-    //   function getColor(number) {
-    //     const colors = ["red", "green", "violet"];
-    //     return colors[number % 3]; 
-    // }
-    
-    // function getSize(number) {
-    //     return number < 5 ? "small" : "big";
-    // }
-    
-
       // Aggregate total bets by type and value for the specified period
-      const [numberBets = []] = await connection.execute(
+      const [numberBets = []] = await pool.execute(
         "SELECT bet_value, SUM(amount) AS total_amount FROM bets WHERE bet_type = 'number' AND period_number = ? GROUP BY bet_value",
         [periodNumber]
     );
-    const [colorBets = []] = await connection.execute(
+    const [colorBets = []] = await pool.execute(
         "SELECT bet_value, SUM(amount) AS total_amount FROM bets WHERE bet_type = 'color' AND period_number = ? GROUP BY bet_value",
         [periodNumber]
     );
-    const [sizeBets = []] = await connection.execute(
+    const [sizeBets = []] = await pool.execute(
         "SELECT bet_value, SUM(amount) AS total_amount FROM bets WHERE bet_type = 'size' AND period_number = ? GROUP BY bet_value",
         [periodNumber]
     );
@@ -173,13 +197,13 @@ router.post("/generate-result", async (req, res) => {
       winningSize = getSize(winningNumber);
 
       // Store result in database with period number
-      await connection.query(
-          "INSERT INTO results (result_number, result_color, result_size, period_number,mins) VALUES (?, ?, ?, ?, ?)",
+      await pool.query(
+          "INSERT INTO result (result_number, result_color, result_size, period_number,mins) VALUES (?, ?, ?, ?, ?)",
           [winningNumber, winningColor, winningSize, periodNumber,1]
       );
 
       // Distribute winnings for the specified period
-      const [bets] = await connection.query("SELECT * FROM bets WHERE period_number = ?", [periodNumber]);
+      const [bets] = await pool.query("SELECT * FROM bets WHERE period_number = ?", [periodNumber]);
       for (const bet of bets) {
           if (
               (bet.bet_type === "number" && parseInt(bet.bet_value) === winningNumber) ||
@@ -187,12 +211,19 @@ router.post("/generate-result", async (req, res) => {
               (bet.bet_type === "size" && bet.bet_value === winningSize)
           ) {
               const winnings = bet.amount * 1.9; // 90% return
-              await connection.query("UPDATE users SET balance = balance + ? WHERE id = ?", [winnings, bet.user_id]);
+              await pool.query(
+                `UPDATE wallet w
+                 JOIN users u ON u.id = w.userId
+                 SET w.balance = w.balance + ?
+                 WHERE w.userId = ? AND w.cryptoname = 'INR'`,
+                [winnings, bet.user_id]
+              );
+              
           }
       }
 
       // Mark all bets for the specified period as processed
-      await connection.query("UPDATE bets SET status = 'processed' WHERE period_number = ?", [periodNumber]);
+      await pool.query("UPDATE bets SET status = 'processed' WHERE period_number = ?", [periodNumber]);
 
       res.json({
           message: "Result generated successfully.",
@@ -216,7 +247,7 @@ router.post("/generate-result", async (req, res) => {
 //       WHERE period = ? AND JSON_CONTAINS(number, JSON_ARRAY(?))
 //     `;
 //     return new Promise((resolve, reject) => {
-//       connection.query(biddingQuery, [period, number], (err, results) => {
+//       pool.query(biddingQuery, [period, number], (err, results) => {
 //         if (err) {
 //           console.error(err);
 //           return reject(new Error("Database query error in biddings table"));
@@ -242,7 +273,7 @@ router.post("/generate-result", async (req, res) => {
 //             SET balance = balance + ? 
 //             WHERE userid = ? AND cryptoname = 'cp'
 //           `;
-//           connection.query(walletQuery, [totalAmount, userid], (walletErr) => {
+//           pool.query(walletQuery, [totalAmount, userid], (walletErr) => {
 //             if (walletErr) {
 //               console.error(walletErr);
 //               return reject(new Error("Database query error in wallet table"));
@@ -261,11 +292,11 @@ router.post("/generate-result", async (req, res) => {
 
 
 
-// router.get("/result/:name",async(req,res)=>{
+// app.get("/result/:name",async(req,res)=>{
 //   const Tablename = req.params.name
 //   try {
 //     const query = "SELECT * FROM results WHERE mins = ?  ORDER BY id DESC ";y
-//     connection.query(query,[Tablename],(err,result)=>{
+//     pool.query(query,[Tablename],(err,result)=>{
 //       if (err) return res.status(500).json({ error: 'Database query error' });
 //       res.json(result);
 //     })
@@ -274,12 +305,12 @@ router.post("/generate-result", async (req, res) => {
 //   }
 // })
 
-router.post("/period", async (req, res) => {
+app.post("/period", async (req, res) => {
   const { mins } = req.body;
   try {
     const query = "SELECT period FROM results WHERE mins = ? ORDER BY period DESC LIMIT 1";
     
-    connection.query(query, [mins], (err, result) => {
+    pool.query(query, [mins], (err, result) => {
       if (err) {
         return res.status(500).json({ error: "Database error" });
       }
@@ -306,7 +337,7 @@ router.post("/period", async (req, res) => {
   }
 });
 
-router.post("/bet-history", async (req, res) => {
+app.post("/bet-history", async (req, res) => {
   const { userId } = req.body;
 
   try {
@@ -316,7 +347,7 @@ router.post("/bet-history", async (req, res) => {
       }
 
       // Query to fetch all bets placed by the user
-      const [bets] = await connection.query(
+      const [bets] = await pool.query(
           `
           SELECT 
               b.id AS bet_id,
@@ -330,7 +361,7 @@ router.post("/bet-history", async (req, res) => {
               r.result_color,
               r.result_size
           FROM bets b
-          LEFT JOIN results r ON b.period_number = r.period_number
+          LEFT JOIN result r ON b.period_number = r.period_number
           WHERE b.user_id = ?
           ORDER BY b.placed_at DESC
           `,
@@ -375,4 +406,4 @@ router.post("/bet-history", async (req, res) => {
   }
 });
 
-module.exports = router;
+module.exports = app;
