@@ -11,7 +11,7 @@ app.use(cors());
 const pool = mysql.createPool({
     host: "localhost",
     user: "root", // Replace with your MySQL username
-    password: "", // Replace with your MySQL password
+    password: "india0192", // Replace with your MySQL password
     database: "stake",
 });
 
@@ -134,20 +134,20 @@ app.post("/generate-result", async (req, res) => {
       if (isNaN(periodNumber) || periodNumber < 1) {
           return res.status(400).json({ error: "Invalid period number." });
       }
+
       // Aggregate total bets by type and value for the specified period
-      const [numberBets = []] = await pool.execute(
-        "SELECT bet_value, SUM(amount) AS total_amount FROM bets WHERE bet_type = 'number' AND period_number = ? GROUP BY bet_value",
-        [periodNumber]
-    );
-    const [colorBets = []] = await pool.execute(
-        "SELECT bet_value, SUM(amount) AS total_amount FROM bets WHERE bet_type = 'color' AND period_number = ? GROUP BY bet_value",
-        [periodNumber]
-    );
-    const [sizeBets = []] = await pool.execute(
-        "SELECT bet_value, SUM(amount) AS total_amount FROM bets WHERE bet_type = 'size' AND period_number = ? GROUP BY bet_value",
-        [periodNumber]
-    );
-    
+      const [numberBets] = await pool.query(
+          "SELECT bet_value, SUM(amount) AS total_amount FROM bets WHERE bet_type = 'number' AND period_number = ? GROUP BY bet_value",
+          [periodNumber]
+      );
+      const [colorBets] = await pool.query(
+          "SELECT bet_value, SUM(amount) AS total_amount FROM bets WHERE bet_type = 'color' AND period_number = ? GROUP BY bet_value",
+          [periodNumber]
+      );
+      const [sizeBets] = await pool.query(
+          "SELECT bet_value, SUM(amount) AS total_amount FROM bets WHERE bet_type = 'size' AND period_number = ? GROUP BY bet_value",
+          [periodNumber]
+      );
 
       // Helper function to find the value with the least total bet
       function findLeastBetValue(bets) {
@@ -160,18 +160,17 @@ app.post("/generate-result", async (req, res) => {
       let winningColor = findLeastBetValue(colorBets);
       let winningSize = findLeastBetValue(sizeBets);
 
-      // Handle ties in total bet amounts for colors
-      if (colorBets.length > 1) {
-          // Check if total amounts are equal for all colors
-          const allEqual = colorBets.every((bet) => bet.total_amount === colorBets[0].total_amount);
-          if (allEqual) {
-              winningColor = "violet"; // Fallback to violet if total amounts are equal
-          }
+      // Handle ties in total bet amounts for red and green
+      const redBet = colorBets.find((bet) => bet.bet_value === "red");
+      const greenBet = colorBets.find((bet) => bet.bet_value === "green");
+
+      if (redBet && greenBet && redBet.total_amount === greenBet.total_amount) {
+          winningColor = "voilet"; // Fallback to voilet if red and green bet amounts are equal
       }
 
       // Ensure consistency between number, color, and size
-      if (winningColor === "violet") {
-          // If violet is the winning color, the winning number must be 0 or 5
+      if (winningColor === "voilet") {
+          // If voilet is the winning color, the winning number must be 0 or 5
           winningNumber = [0, 5][Math.floor(Math.random() * 2)];
       } else {
           // Otherwise, adjust the winning number to match the winning color and size
@@ -187,7 +186,7 @@ app.post("/generate-result", async (req, res) => {
           winningNumber = Math.floor(Math.random() * 10); // Random number between 0 and 9
       }
       if (!winningColor) {
-          winningColor = ["red", "green", "violet"][Math.floor(Math.random() * 3)]; // Random color
+          winningColor = ["red", "green", "voilet"][Math.floor(Math.random() * 3)]; // Random color
       }
       if (!winningSize) {
           winningSize = ["small", "big"][Math.floor(Math.random() * 2)]; // Random size
@@ -198,8 +197,8 @@ app.post("/generate-result", async (req, res) => {
 
       // Store result in database with period number
       await pool.query(
-          "INSERT INTO result (result_number, result_color, result_size, period_number,mins) VALUES (?, ?, ?, ?, ?)",
-          [winningNumber, winningColor, winningSize, periodNumber,1]
+          "INSERT INTO result (result_number, result_color, result_size, period_number) VALUES (?, ?, ?, ?)",
+          [winningNumber, winningColor, winningSize, periodNumber]
       );
 
       // Distribute winnings for the specified period
@@ -218,7 +217,6 @@ app.post("/generate-result", async (req, res) => {
                  WHERE w.userId = ? AND w.cryptoname = 'INR'`,
                 [winnings, bet.user_id]
               );
-              
           }
       }
 
@@ -304,7 +302,19 @@ app.post("/generate-result", async (req, res) => {
 //     res.status(500).json({ error: 'Error fetching data' });
 //   }
 // })
+// Route to fetch all results from the database
+app.get("/results", async (req, res) => {
+  try {
+      // Query the results table
+      const [results] = await pool.query("SELECT * FROM result ORDER BY period_number DESC");
 
+      // Send the results as a JSON response
+      res.json({ results });
+  } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: "Internal server error." });
+  }
+});
 app.post("/period", async (req, res) => {
   const { mins } = req.body;
   try {
