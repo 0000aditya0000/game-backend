@@ -11,7 +11,7 @@ app.use(cors());
 const pool = mysql.createPool({
   host: "localhost",
   user: "root", // Replace with your MySQL username
-  password: "india0192", // Replace with your MySQL password
+  password: "new_password", // Replace with your MySQL password
   database: "stake",
 });
 
@@ -29,7 +29,7 @@ function getSize(number) {
 app.post("/place-bet", async (req, res) => {
   const { userId, betType, betValue, amount, periodNumber } = req.body;
   console.log(amount);
-
+  
   try {
     // Validate input
     if (!["number", "color", "size"].includes(betType)) {
@@ -173,16 +173,10 @@ app.post("/generate-result", async (req, res) => {
               // Otherwise, the color with the least total bet amount wins
               winningColor = redBet.total_amount < greenBet.total_amount ? "red" : "green";
           }
-      } else if (redBet && !greenBet) {
-          // Only red bets exist in the current period, result is random
-          winningColor = ["red", "green", "voilet"][Math.floor(Math.random() * 3)];
-      } else if (!redBet && greenBet) {
-          // Only green bets exist in the current period, result is random
-          winningColor = ["red", "green", "voilet"][Math.floor(Math.random() * 3)];
       } else {
-          // No bets placed for colors in the current period, result is random
-          winningColor = ["red", "green", "voilet"][Math.floor(Math.random() * 3)];
+        winningColor = ["red", "green", "voilet"][Math.floor(Math.random() * 3)];
       }
+      
 
       // Determine winning number based on winning color
       const validNumbers = {
@@ -190,12 +184,12 @@ app.post("/generate-result", async (req, res) => {
           green: [2, 4, 6, 8],
           voilet: [0, 5],
       };
-      const candidates = validNumbers[winningColor];
-      let winningNumber = findLeastBetValue(numberBets);
+      // const candidates = validNumbers[winningColor];
+      let winningNumber =  validNumbers[winningColor][Math.floor(Math.random() * 4)];
 
-      if (!winningNumber || !candidates.includes(parseInt(winningNumber))) {
-          winningNumber = candidates[Math.floor(Math.random() * candidates.length)];
-      }
+      // if (!winningNumber || !candidates.includes(parseInt(winningNumber))) {
+      //     winningNumber = candidates[Math.floor(Math.random() * candidates.length)];
+      // }
 
       // Determine winning size based on winning number
       const winningSize = getSize(winningNumber);
@@ -417,6 +411,28 @@ app.post("/bet-history", async (req, res) => {
     });
 
     res.json({ betHistory });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Internal server error." });
+  }
+});
+
+app.post("/checkValidBet", async (req, res) => {
+  const { userId } = req.body;
+
+  try {
+    if (!userId || isNaN(userId)) {
+      return res.status(400).json({ error: "Invalid user ID." });
+    }
+
+    const [rows] = await pool.query(
+      `SELECT COUNT(*) AS count FROM bets WHERE user_id = ? AND status = 'pending'`,
+      [userId]
+    );
+
+    const count = rows[0]?.count || 0; // Extract count value safely
+
+    res.json({ pendingBets: count }); // Send response with count
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: "Internal server error." });
