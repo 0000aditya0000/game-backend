@@ -240,7 +240,7 @@ router.patch('/user/:id', async (req, res) => {
   try {
     const query = "UPDATE users SET username = ?,name = ?, email = ?, phone = ?, dob = ?, image = ? WHERE id = ?";
     connection.query(query, [username,name, email, phone, dob,image, userId], (err, results) => {
-      if (err) return res.status(500).json({ error: error });
+      if (err) return res.status(500).json({ error: 'Database query Error' });
       if (results.affectedRows === 0) return res.status(404).json({ error: 'User not found' });
       console.log("User details updated successfully");
       res.json({ message: 'User details updated successfully' });
