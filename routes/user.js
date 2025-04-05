@@ -21,39 +21,61 @@ const upload = multer({ storage });
 
 // User registration
 router.post('/register', async (req, res) => {
-  const { name, email, password, phoneNumber, dob, referalCode } = req.body;
+  const { name, username, email, phoneNumber, referalCode, password, myReferralCode } = req.body;
 
   try {
-    // Hash the password
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // Insert the user into the 'users' table
-    const query = "INSERT INTO users (username, email, password, phone, dob, code) VALUES (?, ?, ?, ?, ?, ?)";
-    connection.query(query, [name, email, hashedPassword, phoneNumber, dob, referalCode], (err, results) => {
+    // Step 1: Get referred user's ID (if referral code is provided)
+    let referredById = null;
+
+    if (referalCode) {
+      const refQuery = "SELECT id FROM users WHERE my_referral_code = ?";
+      const [refResults] = await new Promise((resolve, reject) => {
+        connection.query(refQuery, [referalCode], (err, results) => {
+          if (err) return reject(err);
+          resolve(results);
+        });
+      });
+
+      if (refResults && refResults.id) {
+        referredById = refResults.id;
+      } else {
+        return res.status(400).json({ error: 'Invalid referral code' });
+      }
+    }
+
+    // Step 2: Insert the user
+    const query = `
+      INSERT INTO users (username, name, email, password, phone, my_referral_code, referred_by)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `;
+    connection.query(query, [username, name, email, hashedPassword, phoneNumber, myReferralCode, referredById], async (err, results) => {
       if (err) {
         console.log(err);
         return res.status(500).json({ error: 'Database error' });
       }
 
-      // Get the newly created user's ID
       const userId = results.insertId;
-
-      // List of cryptocurrencies
-      const cryptocurrencies = ['BTC', 'ETH', 'LTC', 'USDT', 'SOL', 'DOGE', 'BCH', 'XRP', 'TRX', 'EOS', 'INR','CP'];
-
-      // Generate wallet entries for the new user
-      const walletQuery = "INSERT INTO wallet (userId, balance, cryptoname) VALUES ?";
+      if (referredById) {
+        await propagateReferral(userId, referredById);
+      }
+      // Step 3: Create wallet entries
+      const cryptocurrencies = ['BTC', 'ETH', 'LTC', 'USDT', 'SOL', 'DOGE', 'BCH', 'XRP', 'TRX', 'EOS', 'INR', 'CP'];
       const walletValues = cryptocurrencies.map(crypto => [userId, 0, crypto]);
 
-      // Insert wallet entries into the 'wallet' table
+      const walletQuery = "INSERT INTO wallet (userId, balance, cryptoname) VALUES ?";
       connection.query(walletQuery, [walletValues], (err, walletResults) => {
         if (err) {
           console.log(err);
           return res.status(500).json({ error: 'Error creating wallet entries' });
         }
 
-        // Respond with a success message
-        res.status(201).json({ message: 'User registered and wallet initialized successfully' });
+        res.status(201).json({
+          message: 'User registered and wallet initialized successfully',
+          referral_code: myReferralCode,
+          referred_by: referredById
+        });
       });
     });
   } catch (error) {
@@ -62,50 +84,127 @@ router.post('/register', async (req, res) => {
   }
 });
 
+const propagateReferral = async (newUserId, referrerId) => {
+  let currentReferrer = referrerId;
+  let level = 1;
 
+  while (currentReferrer && level <= 5) {
+      // Insert the referral record for this level
+      await new Promise((resolve, reject) => {
+          connection.query("INSERT INTO referrals (referrer_id, referred_id, level) VALUES (?, ?, ?)", [
+              currentReferrer,
+              newUserId,
+              level,
+          ], (err, results) => {
+              if (err) return reject(err);
+              resolve(results);
+          });
+      });
+
+      // Get the next referrer in the chain (the person who referred the current referrer)
+      const nextReferrerResult = await new Promise((resolve, reject) => {
+          connection.query("SELECT referred_by FROM users WHERE id = ?", [currentReferrer], (err, results) => {
+              if (err) return reject(err);
+              resolve(results);
+          });
+      });
+
+      // If no next referrer or we've reached level 5, break the chain
+      if (!nextReferrerResult || nextReferrerResult.length === 0 || !nextReferrerResult[0].referred_by) {
+          break;
+      }
+
+      // Move up the referral chain
+      currentReferrer = nextReferrerResult[0].referred_by;
+      level++;
+  }
+};
+router.get("/referrals/:userId", async (req, res) => {
+  const { userId } = req.params;
+
+  try {
+      // Get all referrals for this user up to level 5
+      const referrals = await new Promise((resolve, reject) => {
+          connection.query(
+              "SELECT u.id, u.name, u.username, u.email, r.level FROM referrals r JOIN users u ON r.referred_id = u.id WHERE r.referrer_id = ? ORDER BY r.level",
+              [userId],
+              (err, results) => {
+                  if (err) return reject(err);
+                  resolve(results);
+              }
+          );
+      });
+
+      // Group referrals by level
+      const referralsByLevel = {};
+      for (let i = 1; i <= 5; i++) {
+          referralsByLevel[`level${i}`] = referrals.filter(ref => ref.level === i);
+      }
+
+      res.json({
+          userId,
+          totalReferrals: referrals.length,
+          referralsByLevel
+      });
+  } catch (err) {
+      console.error(err);
+      res.status(500).json({ message: "Server error" });
+  }
+});
 // User login
 router.post('/login', async (req, res) => {
   const { email, password } = req.body;
 
   try {
-    // Query to find the user by email
-    const query = "SELECT * FROM users WHERE email = ?";
-    connection.query(query, [email], async (err, results) => {
-      if (err) return res.status(500).json({ error: 'Database query error' });
-      if (results.length === 0) return res.status(404).json({ error: 'User not found' });
+      // Query to find the user by email
+      const query = "SELECT * FROM users WHERE email = ?";
+      connection.query(query, [email], async (err, results) => {
+          if (err) return res.status(500).json({ error: 'Database query error' });
+          if (results.length === 0) return res.status(404).json({ error: 'User not found' });
 
-      const user = results[0];
-      
-      const isMatch = await bcrypt.compare(password, user.password);
-      if (!isMatch) return res.status(401).json({ error: 'Invalid credentials' });
+          const user = results[0];
 
-      // Fetch wallet details for the logged-in user
-      const walletQuery = "SELECT * FROM wallet WHERE userId = ?";
-      connection.query(walletQuery, [user.id], (err, walletResults) => {
-        if (err) return res.status(500).json({ error: 'Error fetching wallet data' });
+          const isMatch = await bcrypt.compare(password, user.password);
+          if (!isMatch) return res.status(401).json({ error: 'Invalid credentials' });
 
-        // Generate JWT token
-        const token = jwt.sign({ id: user.id }, process.env.JWT_SECRET, { expiresIn: '1h' });
+          // **Invalidate previous session** (Delete any existing session for the user)
+          const deleteSessionQuery = "DELETE FROM sessions WHERE user_id = ?";
+          connection.query(deleteSessionQuery, [user.id], (err) => {
+              if (err) console.error('Error deleting previous session:', err);
+          });
 
-        // Send the user profile and wallet data in the response
-        res.json({
-          token,
-          user: {
-            id: user.id,
-            username: user.username,
-            email: user.email,
-            phone: user.phone,
-            dob: user.dob,
-            referalCode: user.code
-            
-          },
-          wallet: walletResults, // Include wallet data
-        });
+          // Generate new JWT token
+          const token = jwt.sign({ id: user.id }, process.env.JWT_SECRET, { expiresIn: '1h' });
+
+          // **Store new session in DB**
+          const insertSessionQuery = "INSERT INTO sessions (user_id, token) VALUES (?, ?)";
+          connection.query(insertSessionQuery, [user.id, token], (err) => {
+              if (err) console.error('Error saving session:', err);
+          });
+
+          // Fetch wallet details for the logged-in user
+          const walletQuery = "SELECT * FROM wallet WHERE userId = ?";
+          connection.query(walletQuery, [user.id], (err, walletResults) => {
+              if (err) return res.status(500).json({ error: 'Error fetching wallet data' });
+
+              // Send the user profile and wallet data in the response
+              res.json({
+                  token,
+                  user: {
+                      id: user.id,
+                      username: user.username,
+                      email: user.email,
+                      phone: user.phone,
+                      dob: user.dob,
+                      referalCode: user.my_referral_code
+                  },
+                  wallet: walletResults
+              });
+          });
       });
-    });
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: 'Error logging in user' });
+      console.error(error);
+      res.status(500).json({ error: 'Error logging in user' });
   }
 });
 

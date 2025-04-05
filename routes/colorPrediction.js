@@ -11,7 +11,7 @@ app.use(cors());
 const pool = mysql.createPool({
   host: "localhost",
   user: "root", // Replace with your MySQL username
-  password: "new_password", // Replace with your MySQL password
+  password: "india0192", // Replace with your MySQL password
   database: "stake",
 });
 
@@ -182,10 +182,10 @@ app.post("/generate-result", async (req, res) => {
       const validNumbers = {
           red: [1, 3, 7, 9],
           green: [2, 4, 6, 8],
-          voilet: [0, 5],
+          voilet: [0, 5 ,0 ,5],
       };
       // const candidates = validNumbers[winningColor];
-      let winningNumber =  validNumbers[winningColor][Math.floor(Math.random() * 4)];
+      let winningNumber =  validNumbers[winningColor][Math.floor(validNumbers.length * 4)];
 
       // if (!winningNumber || !candidates.includes(parseInt(winningNumber))) {
       //     winningNumber = candidates[Math.floor(Math.random() * candidates.length)];
@@ -317,7 +317,7 @@ app.post("/period", async (req, res) => {
   const { mins } = req.body;
   try {
     const query =
-      "SELECT period FROM results WHERE mins = ? ORDER BY period DESC LIMIT 1";
+      "SELECT period FROM result WHERE mins = ? ORDER BY period DESC LIMIT 1";
 
     pool.query(query, [mins], (err, result) => {
       if (err) {
