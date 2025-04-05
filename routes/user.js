@@ -332,14 +332,14 @@ router.delete('/user/:id', async (req, res) => {
 
 
 // Update user details by ID
-router.put('/user/:id', async (req, res) => {
+router.patch('/user/:id', async (req, res) => {
   const userId = req.params.id;
-  const { username, email, phone, dob } = req.body;
-
+  const { username,name, email, phone,image } = req.body;
+  console.log(req.body, "body");
   try {
-    const query = "UPDATE users SET username = ?, email = ?, phone = ?, dob = ? WHERE id = ?";
-    connection.query(query, [username, email, phone, dob, userId], (err, results) => {
-      if (err) return res.status(500).json({ error: 'Database query error' });
+    const query = "UPDATE users SET username = ?,name = ?, email = ?, phone = ?, image = ? WHERE id = ?";
+    connection.query(query, [username,name, email, phone,image, userId], (err, results) => {
+      if (err) return res.status(500).json({ error: err.message });
       if (results.affectedRows === 0) return res.status(404).json({ error: 'User not found' });
       console.log("User details updated successfully");
       res.json({ message: 'User details updated successfully' });
@@ -350,7 +350,7 @@ router.put('/user/:id', async (req, res) => {
 });
 
 // Update user password by ID
-router.put('/user/:id/password', async (req, res) => {
+router.put('/user/password/:id', async (req, res) => {
   const userId = req.params.id;
   const { currentPassword, newPassword } = req.body;
 
