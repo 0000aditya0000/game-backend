@@ -1,7 +1,10 @@
+
 const express = require("express");
 const mysql = require("mysql2/promise");
 const bodyParser = require("body-parser");
 const cors = require("cors");
+
+const axios = require("axios");
 
 const app = express();
 app.use(bodyParser.json());
@@ -11,7 +14,7 @@ app.use(cors());
 const pool = mysql.createPool({
   host: "localhost",
   user: "root", // Replace with your MySQL username
-  password: "new_password", // Replace with your MySQL password
+  password: "india0192", // Replace with your MySQL password
   database: "stake",
 });
 
@@ -438,5 +441,34 @@ app.post("/checkValidBet", async (req, res) => {
     res.status(500).json({ error: "Internal server error." });
   }
 });
+
+app.post("/launchGame", async (req, res)=>{
+  const { userId,id } = req.body;
+  const payload = {
+    hall: "941094",
+    key: "rollix777",
+    login: userId,
+    gameId: id,
+    cmd: "openGame",
+    demo: "0",
+    domain: "https://rollix777.com/",
+    cdnUrl: "",
+    exitUrl: "https://rollix777.com/",
+    language: "en"
+  };
+  try {
+    const response = await axios.post("http://asiaapi.net/API/openGame/", payload);
+    const gameUrl = response.data?.content?.game?.url;
+
+    if (gameUrl) {
+      res.json({ success: true, gameUrl });
+    } else {
+      res.status(500).json({ success: false, message: "Game URL not found in response." });
+    }
+  } catch (error) {
+    console.error("Error launching game:", error.message);
+    res.status(500).json({ success: false, message: "Failed to launch game.", error: error.message });
+  }
+})
 
 module.exports = app;
