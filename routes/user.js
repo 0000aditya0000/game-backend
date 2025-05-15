@@ -5,7 +5,6 @@ const connection = require('../config/db');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
-
 const router = express.Router();
 
 const storage = multer.diskStorage({
@@ -600,10 +599,9 @@ router.get('/statistics', async (req, res) => {
   }
 });
 
-// Deposit Endpoint (handles all deposits, commissions only for the first deposit)
 router.post('/deposit', async (req, res) => {
     const { userId, amount, cryptoname } = req.body;
-    const { calculateCommissions } = require('./commission');
+    const { calculateCommissions } = require('../utils/commission');
 
     const validCryptos = ['BTC', 'ETH', 'LTC', 'USDT', 'SOL', 'DOGE', 'BCH', 'XRP', 'TRX', 'EOS', 'INR', 'CP'];
 
@@ -615,15 +613,7 @@ router.post('/deposit', async (req, res) => {
         return res.status(400).json({ error: 'Invalid cryptoname.' });
     }
 
-    let connection;
     try {
-        connection = await new Promise((resolve, reject) => {
-            pool.getConnection((err, conn) => {
-                if (err) return reject(err);
-                resolve(conn);
-            });
-        });
-
         await new Promise((resolve, reject) => {
             connection.beginTransaction(err => {
                 if (err) return reject(err);
@@ -727,16 +717,10 @@ router.post('/deposit', async (req, res) => {
         });
     } catch (error) {
         console.error(`Error processing deposit in ${cryptoname}:`, error);
-        if (connection) {
-            await new Promise((resolve) => {
-                connection.rollback(() => resolve());
-            });
-        }
+        await new Promise((resolve) => {
+            connection.rollback(() => resolve());
+        });
         res.status(error.message === 'User not found' || error.message.includes('Wallet entry') ? 404 : 500).json({ error: error.message || 'Internal server error' });
-    } finally {
-        if (connection) {
-            connection.release();
-        }
     }
 });
 
