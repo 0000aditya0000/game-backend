@@ -864,4 +864,29 @@ router.get('/pending-commissions/:userId', async (req, res) => {
 });
 
 
+router.put('/kycapprove/:id',async (req,res) => {
+
+  try {
+        const userId = req.params.id;
+        const kycstatus = req.body.kycstatus;
+       // Update the kycstatus in the database
+      const queryUpdate = "UPDATE users SET kycstatus = ? WHERE id = ?";
+      connection.query(queryUpdate, [kycstatus, userId], (err, updateResults) => {
+        if (err) return res.status(500).json({ error: 'Database query error' });
+        console.log(" updated successfully");
+        res.json({ message: 'kycstaus updated successfully' });
+      });
+    
+   
+  } catch (error) {
+       console.error(error.stack); // Log the full error stack for debugging
+      return res.status(404).json({
+      success: false,
+      message: "Unable to Approve kyc Status",
+      error: error.message,
+    });
+  }
+  
+})
+
 module.exports = router;
