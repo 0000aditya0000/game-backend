@@ -70,4 +70,45 @@ router.post('/user', async (req, res) => {
 });
 
 
+
+
+
+//================================= add/delete games in gamedata table =========================
+
+// Add a new game (admin only)
+router.post('/addgames', (req, res) => {
+  const { game_name,  game_type, image  } = req.body;
+
+  if (!game_name || !game_type || !image ) {
+    return res.status(400).json({ error: 'Please provide all required fields' });
+  }
+
+  const query = "INSERT INTO games (name,type,image) VALUES (?, ?, ?)";
+  connection.query(query, [game_name, game_type,image], (err, results) => {
+    if (err) {
+      console.error(err);
+      return res.status(500).json({ error: 'Database error while adding game' });
+    }
+    res.status(201).json({ message: 'Game added successfully', gameId: results.insertId });
+  });
+});
+
+// Delete a game by ID (admin only)
+router.delete('/games/:id', (req, res) => {
+  const gameId = req.params.id;
+
+  const query = "DELETE FROM games WHERE id = ?";
+  connection.query(query, [gameId], (err, results) => {
+    if (err) {
+      console.error(err);
+      return res.status(500).json({ error: 'Database error while deleting game' });
+    }
+    if (results.affectedRows === 0) {
+      return res.status(404).json({ error: 'Game not found' });
+    }
+    res.json({ message: 'Game deleted successfully' });
+  });
+});
+
+
 module.exports = router;
