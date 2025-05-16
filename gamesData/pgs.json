@@ -1,0 +1,326 @@
+[
+    {
+      "game_name": "Cracker",
+      "game_uid": "4415afc357ffd90adfae34b7fc3217d0",
+      "game_type": "Slot Game",
+      "icon": "https://dl.kz344.net/game-icon/agg_ht-cracker.png"
+    },
+    {
+      "game_name": "EstateRichman",
+      "game_uid": "99aa40727eebf03285f0b41492ad3200",
+      "game_type": "Slot Game",
+      "icon": "https://dl.kz344.net/game-icon/agg_ht-estaterichman.png"
+    },
+    {
+      "game_name": "CaribbeanTreasure",
+      "game_uid": "186ceb140e9248012244381fc169640b",
+      "game_type": "Slot Game",
+      "icon": "https://dl.kz344.net/game-icon/agg_ht-caribbeantreasure.png"
+    },
+    {
+      "game_name": "LittleWitch",
+      "game_uid": "f41dd1fabc4700025036ffd090358402",
+      "game_type": "Slot Game",
+      "icon": "https://dl.kz344.net/game-icon/agg_ht-thelittlewitch.png"
+    },
+    {
+      "game_name": "FlameWolves",
+      "game_uid": "6ed7442a8144c29321d95168ef6cb3de",
+      "game_type": "Slot Game",
+      "icon": "https://dl.kz344.net/game-icon/agg_ht-flamewolves.png"
+    },
+    {
+      "game_name": "PersianEmpire",
+      "game_uid": "b4a0d38bac2760d3b2539430b3d65c6b",
+      "game_type": "Slot Game",
+      "icon": "https://dl.kz344.net/game-icon/agg_ht-persianempire.png"
+    },
+    {
+      "game_name": "Heracles",
+      "game_uid": "3be4c3abed248df43bee04af55c7894e",
+      "game_type": "Slot Game",
+      "icon": "https://dl.kz344.net/game-icon/agg_ht-heracles.png"
+    },
+    {
+      "game_name": "Poseidon",
+      "game_uid": "7b5698f1ab2aef819bea060ae5836c6d",
+      "game_type": "Slot Game",
+      "icon": "https://dl.kz344.net/game-icon/agg_ht-poseidon.png"
+    },
+    {
+      "game_name": "GoldenMaitreya",
+      "game_uid": "19565e4f0152c29bc3c05d44ffe316d2",
+      "game_type": "Slot Game",
+      "icon": "https://dl.kz344.net/game-icon/agg_ht-goldenmaitreya.png"
+    },
+    {
+      "game_name": "GoldenWuZeTian",
+      "game_uid": "e5e9c0eae20cdecc45c9287b93e00d4d",
+      "game_type": "Slot Game",
+      "icon": "https://dl.kz344.net/game-icon/agg_ht-goldenwuzetian.png"
+    },
+    {
+      "game_name": "FaFaFa",
+      "game_uid": "b414f060aa8f9cacdcb38eb7e4d698d1",
+      "game_type": "Slot Game",
+      "icon": "https://dl.kz344.net/game-icon/agg_ht-fafafa.png"
+    },
+    {
+      "game_name": "TaichiLiondance",
+      "game_uid": "5cd7b40fb3e8871e42bf008d33f6fc55",
+      "game_type": "Slot Game",
+      "icon": "https://dl.kz344.net/game-icon/agg_ht-taichiliondance.png"
+    },
+    {
+      "game_name": "LuckyWheel",
+      "game_uid": "1c042f90ee43f68940d21432170545d9",
+      "game_type": "Slot Game",
+      "icon": "https://dl.kz344.net/game-icon/agg_ht-luckywheel.png"
+    },
+    {
+      "game_name": "Pharaoh",
+      "game_uid": "2200f80fd602452779dde29de38f2642",
+      "game_type": "Slot Game",
+      "icon": "https://dl.kz344.net/game-icon/agg_ht-thepharaoh.png"
+    },
+    {
+      "game_name": "DragonTreasure",
+      "game_uid": "408fe1f76263710c4325c172e0b6b66d",
+      "game_type": "Slot Game",
+      "icon": "https://dl.kz344.net/game-icon/agg_ht-dragontreasure.png"
+    },
+    {
+      "game_name": "Cleopatra",
+      "game_uid": "a1405556d23829d1d1ba8209914d2db2",
+      "game_type": "Slot Game",
+      "icon": "https://dl.kz344.net/game-icon/agg_ht-cleopatra.png"
+    },
+    {
+      "game_name": "TaichiBoy",
+      "game_uid": "8825802fc356f944dc0b7720c248dcb5",
+      "game_type": "Slot Game",
+      "icon": "https://dl.kz344.net/game-icon/agg_ht-taichiboy.png"
+    },
+    {
+      "game_name": "TaichiFortuna",
+      "game_uid": "e8db9403f804c626621b3aac112615b1",
+      "game_type": "Slot Game",
+      "icon": "https://dl.kz344.net/game-icon/agg_ht-taichifortuna.png"
+    },
+    {
+      "game_name": "LuckyWheelDeluxe",
+      "game_uid": "bf003acd0595a92db6fe39af0f01173c",
+      "game_type": "Slot Game",
+      "icon": "https://dl.kz344.net/game-icon/agg_ht-luckywheeldeluxe.png"
+    },
+    {
+      "game_name": "Magician",
+      "game_uid": "70538dce07ac3cd314b9f33fa6af360b",
+      "game_type": "Slot Game",
+      "icon": "https://dl.kz344.net/game-icon/agg_ht-magician.png"
+    },
+    {
+      "game_name": "MonterPop",
+      "game_uid": "b0a21470baac95714596ae6a1c445ff0",
+      "game_type": "Slot Game",
+      "icon": "https://dl.kz344.net/game-icon/agg_ht-monsterpop.png"
+    },
+    {
+      "game_name": "GoldenFuwa",
+      "game_uid": "6e9ebb38efb33fb01c2991fea27b10c5",
+      "game_type": "Slot Game",
+      "icon": "https://dl.kz344.net/game-icon/agg_ht-goldenfuwa.png"
+    },
+    {
+      "game_name": "LampBoy",
+      "game_uid": "ee7671fff755231442ba7930a4e89a9f",
+      "game_type": "Slot Game",
+      "icon": "https://dl.kz344.net/game-icon/agg_ht-aladdin.png"
+    },
+    {
+      "game_name": "SuperDiamond",
+      "game_uid": "0d37948aaac5451d55bad16205962dbb",
+      "game_type": "Slot Game",
+      "icon": "https://dl.kz344.net/game-icon/agg_ht-superdiamond.png"
+    },
+    {
+      "game_name": "emperor auspicious",
+      "game_uid": "56991d770894ef8955473733ae2de42f",
+      "game_type": "Slot Game",
+      "icon": "https://dl.kz344.net/game-icon/agg_ht-emperorauspicious.png"
+    },
+    {
+      "game_name": "Arctic King",
+      "game_uid": "4910fce5a70e23f6142668dce774fcfb",
+      "game_type": "Slot Game",
+      "icon": "https://dl.kz344.net/game-icon/agg_ht-arcticking.png"
+    },
+    {
+      "game_name": "Zorro",
+      "game_uid": "e0a1d2ed80935e9b94c8520b83951a89",
+      "game_type": "Slot Game",
+      "icon": "https://dl.kz344.net/game-icon/agg_ht-zorro.png"
+    },
+    {
+      "game_name": "Amazon Queen",
+      "game_uid": "d0a8aa8c39417c3cf5798c5b67431a59",
+      "game_type": "Slot Game",
+      "icon": "https://dl.kz344.net/game-icon/agg_ht-amazonqueen.png"
+    },
+    {
+      "game_name": "Iceage Mammoths",
+      "game_uid": "b588e0c94181676749f9271f42b71285",
+      "game_type": "Slot Game",
+      "icon": "https://dl.kz344.net/game-icon/agg_ht-iceagemammoths.png"
+    },
+    {
+      "game_name": "Frenzyshot",
+      "game_uid": "8927032c0dc3cde4ae6b3d791637c60b",
+      "game_type": "Slot Game",
+      "icon": "https://dl.kz344.net/game-icon/agg_ht-frenzyshot.png"
+    },
+    {
+      "game_name": "jalapeno",
+      "game_uid": "d16b15aa4046262040087d6078aa3385",
+      "game_type": "Slot Game",
+      "icon": "https://dl.kz344.net/game-icon/agg_ht-jalapeno.png"
+    },
+    {
+      "game_name": "Fortune cat",
+      "game_uid": "a3bc4a040e5628f9fb4e1e1fb240cc74",
+      "game_type": "Slot Game",
+      "icon": "https://dl.kz344.net/game-icon/agg_ht-fortunecat.png"
+    },
+    {
+      "game_name": "ThreeKings",
+      "game_uid": "ec93b0c7b142ba012e06e35942b67639",
+      "game_type": "Slot Game",
+      "icon": "https://dl.kz344.net/game-icon/agg_ht-threekings.png"
+    },
+    {
+      "game_name": "GodOfFortune",
+      "game_uid": "bf898f2452df60cfe00c8c5ab297f765",
+      "game_type": "Slot Game",
+      "icon": "https://dl.kz344.net/game-icon/agg_ht-godoffortune.png"
+    },
+    {
+      "game_name": "DragonTiles",
+      "game_uid": "98c235b68f900f290755d91af48a7c9d",
+      "game_type": "Slot Game",
+      "icon": "https://dl.kz344.net/game-icon/agg_ht-dragontiles.png"
+    },
+    {
+      "game_name": "Power Of Thor",
+      "game_uid": "277247efa761dad196e4fbf47d12480f",
+      "game_type": "Slot Game",
+      "icon": "https://dl.kz344.net/game-icon/agg_ht-powerofthor.png"
+    },
+    {
+      "game_name": "Apollo",
+      "game_uid": "1519d64fe0a202e503ff4ed3dc48dfb0",
+      "game_type": "Slot Game",
+      "icon": "https://dl.kz344.net/game-icon/agg_ht-apollo.png"
+    },
+    {
+      "game_name": "Jalapeno2",
+      "game_uid": "143740f61df61f7241689db2d6ae434e",
+      "game_type": "Slot Game",
+      "icon": "https://dl.kz344.net/game-icon/agg_ht-jalapeno2.png"
+    },
+    {
+      "game_name": "Pirate Attack",
+      "game_uid": "a14c4d03a5730ca72f4e14d831c46d8d",
+      "game_type": "Slot Game",
+      "icon": "https://dl.kz344.net/game-icon/agg_ht-pirateattack.png"
+    },
+    {
+      "game_name": "Train Robber",
+      "game_uid": "e00363d4fb2301410a7905d405d5239f",
+      "game_type": "Slot Game",
+      "icon": "https://dl.kz344.net/game-icon/agg_ht-trainrobber.png"
+    },
+    {
+      "game_name": "Panda Warrior",
+      "game_uid": "65122c52008d4895bc286aee5aa339a9",
+      "game_type": "Slot Game",
+      "icon": "https://dl.kz344.net/game-icon/agg_ht-pandawarrior.png"
+    },
+    {
+      "game_name": "Fortune Koi",
+      "game_uid": "3018148f7fbec07b68911c2accd67f1c",
+      "game_type": "Slot Game",
+      "icon": "https://dl.kz344.net/game-icon/agg_ht-fortunekoi2.png"
+    },
+    {
+      "game_name": "ToySoldiers",
+      "game_uid": "749b05652736c5c79c73ba325559e5d9",
+      "game_type": "Slot Game",
+      "icon": "https://dl.kz344.net/game-icon/agg_ht-toysoldiers.png"
+    },
+    {
+      "game_name": "Crazy Penguin",
+      "game_uid": "b7d78ccb36c407ab06bf4d2386aea64e",
+      "game_type": "Slot Game",
+      "icon": "https://dl.kz344.net/game-icon/agg_ht-crazypenguin.png"
+    },
+    {
+      "game_name": "Gold Rush",
+      "game_uid": "b02fc0690abd6d0ee2a962931d051c05",
+      "game_type": "Slot Game",
+      "icon": "https://dl.kz344.net/game-icon/agg_ht-goldrush.png"
+    },
+    {
+      "game_name": "The King Of Olympus",
+      "game_uid": "c3da598ed9f974c21fdb6803e9b2d95a",
+      "game_type": "Slot Game",
+      "icon": "https://dl.kz344.net/game-icon/agg_ht-thekingofolympus.png"
+    },
+    {
+      "game_name": "Fortune Gate",
+      "game_uid": "9f49cb9d66c1c67a5e378da145d3912f",
+      "game_type": "Slot Game",
+      "icon": "https://dl.kz344.net/game-icon/agg_ht-fortunegate.png"
+    },
+    {
+      "game_name": "Legend of Aztec",
+      "game_uid": "fbebca2ca5cc76d5ee08c00d2462cb64",
+      "game_type": "Slot Game",
+      "icon": "https://dl.kz344.net/game-icon/agg_ht-legendofaztec.png"
+    },
+    {
+      "game_name": "Mahjong Gold 2",
+      "game_uid": "1471cc474553f9dd2f8ae9ffcc59f025",
+      "game_type": "Slot Game",
+      "icon": "https://dl.kz344.net/game-icon/agg_ht-mahjonggold2.png"
+    },
+    {
+      "game_name": "Crazy Thieves",
+      "game_uid": "791f37102466bad26dc4973693081cf9",
+      "game_type": "Slot Game",
+      "icon": "https://dl.kz344.net/game-icon/agg_ht-theheists.png"
+    },
+    {
+      "game_name": "Fortune Bull",
+      "game_uid": "ec7e76ccedb902a79e59596150dcca70",
+      "game_type": "Slot Game",
+      "icon": "https://dl.kz344.net/game-icon/agg_ht-fortunebull.png"
+    },
+    {
+      "game_name": "Prosperity 168",
+      "game_uid": "81661f96c3a1e69d38ef7b61618ac763",
+      "game_type": "Slot Game",
+      "icon": "https://dl.kz344.net/game-icon/agg_ht-prosperity168.png"
+    },
+    {
+      "game_name": "Mahjong Infinity",
+      "game_uid": "314906fb72a457defbc59bd6e0c8c27a",
+      "game_type": "Slot Game",
+      "icon": "https://dl.kz344.net/game-icon/agg_ht-mahjonginfinity.png"
+    },
+    {
+      "game_name": "Tianhou Mazu",
+      "game_uid": "9f95520618cc2020cdc7a6a992a2a045",
+      "game_type": "Slot Game",
+      "icon": "https://dl.kz344.net/game-icon/agg_ht-tianhoumazu.png"
+    }
+  ]

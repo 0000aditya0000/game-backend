@@ -1,0 +1,194 @@
+[
+    {
+      "game_name": "BTC 骰宝 1min",
+      "game_uid": "c21358b76bc72ac120d6097aa8c672af",
+      "game_type": "Lottery Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/bf/BTC-LOTTO-1m.png"
+    },
+    {
+      "game_name": "BTC 骰宝 3min",
+      "game_uid": "6d90cfbdbf5b27478d3502f15c6cce9d",
+      "game_type": "Lottery Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/bf/BTC-LOTTO-3m.png"
+    },
+    {
+      "game_name": "BTC 骰宝 5min",
+      "game_uid": "4a5aaebcd2cf982c4f56607aa98cda13",
+      "game_type": "Lottery Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/bf/BTC-LOTTO-5m.png"
+    },
+    {
+      "game_name": "BTC 骰宝 15min",
+      "game_uid": "48cd68b11b58aaa0c34e19251589f53a",
+      "game_type": "Lottery Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/bf/BTC-LOTTO-15m.png"
+    },
+    {
+      "game_name": "ETH 骰宝 1min",
+      "game_uid": "7eb47988ca406e61a0a44804fa2e607b",
+      "game_type": "Lottery Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/bf/ETH-LOTTO-1m.png"
+    },
+    {
+      "game_name": "ETH 骰宝 3min",
+      "game_uid": "7c9bd99f7399979217b9ee18205d2893",
+      "game_type": "Lottery Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/bf/ETH-LOTTO-3m.png"
+    },
+    {
+      "game_name": "ETH 骰宝 5min",
+      "game_uid": "416c279283b76349a198870b080f03dc",
+      "game_type": "Lottery Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/bf/ETH-LOTTO-5m.png"
+    },
+    {
+      "game_name": "ETH 骰宝 15min",
+      "game_uid": "aeb658ee5a6d01b1d24b4d58213a117b",
+      "game_type": "Lottery Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/bf/ETH-LOTTO-15m.png"
+    },
+    {
+      "game_name": "BTCDT 龙虎 1min",
+      "game_uid": "a0ac3621c63edaab0af53a513a6009ee",
+      "game_type": "Lottery Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/bf/BTCDT-1m.png"
+    },
+    {
+      "game_name": "BTCDT 龙虎 3min",
+      "game_uid": "4686d649dd80acbb2cae1b4c116f682f",
+      "game_type": "Lottery Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/bf/BTCDT-3m.png"
+    },
+    {
+      "game_name": "BTCDT 龙虎 5min",
+      "game_uid": "dfa9f22b7a0e797067c322b39d66e3ec",
+      "game_type": "Lottery Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/bf/BTCDT-5m.png"
+    },
+    {
+      "game_name": "BTCDT 龙虎 15min",
+      "game_uid": "892fcb830bdd9e6e430f679ddd19af12",
+      "game_type": "Lottery Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/bf/BTCDT-15m.png"
+    },
+    {
+      "game_name": "ETHDT 龙虎 1min",
+      "game_uid": "948d1615601a35819c366cf95850b01b",
+      "game_type": "Lottery Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/bf/ETHDT-1m.png"
+    },
+    {
+      "game_name": "ETHDT 龙虎 3min",
+      "game_uid": "70fe678266ebaa16304346c0b7ad9eac",
+      "game_type": "Lottery Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/bf/ETHDT-3m.png"
+    },
+    {
+      "game_name": "ETHDT 龙虎 5min",
+      "game_uid": "286e99139f7a919dbc29627089f1ce79",
+      "game_type": "Lottery Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/bf/ETHDT-5m.png"
+    },
+    {
+      "game_name": "ETHDT 龙虎 15min",
+      "game_uid": "e79b32f45bd420c5ff86d9a474aface8",
+      "game_type": "Lottery Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/bf/ETHDT-15m.png"
+    },
+    {
+      "game_name": "BTCFAST-PARITY 极速 1min",
+      "game_uid": "e1aa8f9f38cbc21497ae50c817bdcec8",
+      "game_type": "Lottery Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/bf/BTC-FAST-PARITY-1min.png"
+    },
+    {
+      "game_name": "BTCFAST-PARITY 极速 3min",
+      "game_uid": "f9fd1ee57659d0c4d7dec7de094df69f",
+      "game_type": "Lottery Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/bf/BTC-FAST-PARITY-3min.png"
+    },
+    {
+      "game_name": "BTCFAST-PARITY 极速 5min",
+      "game_uid": "336791615c1b4797c475b8334e87d509",
+      "game_type": "Lottery Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/bf/BTC-FAST-PARITY-5min.png"
+    },
+    {
+      "game_name": "BTCFAST-PARITY 极速 15min",
+      "game_uid": "a6f552e059878ec00059e80541d2a0e9",
+      "game_type": "Lottery Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/bf/BTC-FAST-PARITY-15min.png"
+    },
+    {
+      "game_name": "ETHFAST-PARITY 极速 1min",
+      "game_uid": "5b694b2747ff17b27807cc6d87f01f43",
+      "game_type": "Lottery Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/bf/ETH-FAST-PARITY-1min.png"
+    },
+    {
+      "game_name": "ETHFAST-PARITY 极速 3min",
+      "game_uid": "862fceb98cc8a991f3c73e75eca4ba96",
+      "game_type": "Lottery Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/bf/ETH-FAST-PARITY-3min.png"
+    },
+    {
+      "game_name": "ETHFAST-PARITY 极速 5min",
+      "game_uid": "43b6110e68341e960274937f060710c6",
+      "game_type": "Lottery Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/bf/ETH-FAST-PARITY-5min.png"
+    },
+    {
+      "game_name": "ETHFAST-PARITY 极速 15min",
+      "game_uid": "3a530a63fb981c6ebea01af75dbd6d15",
+      "game_type": "Lottery Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/bf/ETH-FAST-PARITY-15min.png"
+    },
+    {
+      "game_name": "BTC-TRENDING 趋势 1min",
+      "game_uid": "b82a2bf45b777f939e05ba05c59819f7",
+      "game_type": "Lottery Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/bf/BTC-TRENDING-1m.png"
+    },
+    {
+      "game_name": "BTC-TRENDING 趋势 3min",
+      "game_uid": "46e19cc607b9b640717706ff50e23779",
+      "game_type": "Lottery Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/bf/BTC-TRENDING-3m.png"
+    },
+    {
+      "game_name": "BTC-TRENDING 趋势 5min",
+      "game_uid": "6e42a3eaaa4c63812fb87128c3c9e1b7",
+      "game_type": "Lottery Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/bf/BTC-TRENDING-5m.png"
+    },
+    {
+      "game_name": "BTC-TRENDING 趋势 15min",
+      "game_uid": "8b4ca30e25f4721c3e0f4fec79ea0ca6",
+      "game_type": "Lottery Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/bf/BTC-TRENDING-15m.png"
+    },
+    {
+      "game_name": "ETH-TRENDING 趋势 1min",
+      "game_uid": "0b76ecd5cc9dec53be872a607884b27e",
+      "game_type": "Lottery Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/bf/ETH-TRENDING-1m.png"
+    },
+    {
+      "game_name": "ETH-TRENDING 趋势 3min",
+      "game_uid": "8e03f987cc866ef733ec714836612d35",
+      "game_type": "Lottery Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/bf/ETH-TRENDING-3m.png"
+    },
+    {
+      "game_name": "ETH-TRENDING 趋势 5min",
+      "game_uid": "82bd72aa451dc9e31dcf39624d1c9a2a",
+      "game_type": "Lottery Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/bf/ETH-TRENDING-5m.png"
+    },
+    {
+      "game_name": "ETH-TRENDING 趋势 15min",
+      "game_uid": "20086edc59b54ee6e66481ac248ad512",
+      "game_type": "Lottery Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/bf/ETH-TRENDING-15m.png"
+    }
+  ]
