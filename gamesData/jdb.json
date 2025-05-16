@@ -1,0 +1,770 @@
+  [
+      {
+        "game_name": "Dragon Soar",
+        "game_uid": "9341a18d096ad901ef77338998f29098",
+        "game_type": "Slot Game",
+        "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Dragon-Soar.png"
+      },
+    {
+      "game_name": "Pop Pop Candy",
+      "game_uid": "fde142e65f14da39f784e9e5325e0a77",
+      "game_type": "Slot Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Pop-Pop-Candy.png"
+    },
+    {
+      "game_name": "Open Sesame Mega",
+      "game_uid": "cb5e57be0354264c6c7ea0cdf4eb18b3",
+      "game_type": "Slot Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Open-Sesame-Mega.png"
+    },
+    {
+      "game_name": "Fruity Bonanza",
+      "game_uid": "f5d6b418b755f3aefe3b9828f3112c9c",
+      "game_type": "Slot Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Fruity-Bonanza.png"
+    },
+    {
+      "game_name": "Caishen Coming",
+      "game_uid": "45ecec5dd5077785e7a09988b95bbd24",
+      "game_type": "Slot Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Caishen-Coming.png"
+    },
+    {
+      "game_name": "Coocoo Farm",
+      "game_uid": "d1f17fd51e474b0e72892332ea551ba1",
+      "game_type": "Slot Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Coocoo-Farm.png"
+    },
+    {
+      "game_name": "Elemental Link Water",
+      "game_uid": "b84274cdfa5731945a34bfd0db1ddeea",
+      "game_type": "Slot Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Elemental-Link-Water.png"
+    },
+    {
+      "game_name": "Elemental Link Fire",
+      "game_uid": "46016a772b92c7f47dfdc5873f184ef1",
+      "game_type": "Slot Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Elemental-Link-Fire.png"
+    },
+    {
+      "game_name": "Birdsparty Deluxe",
+      "game_uid": "786d1cd7f4fa9905c825378292f1204c",
+      "game_type": "Slot Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Birdsparty-Deluxe.png"
+    },
+    {
+      "game_name": "Moneybags Man 2",
+      "game_uid": "33c862e7db9e0e59ab3f8fe770f797da",
+      "game_type": "Slot Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Moneybags-Man-2.png"
+    },
+    {
+      "game_name": "Trump Card",
+      "game_uid": "96c010fc4a95792401e903213d7add44",
+      "game_type": "Slot Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Trump-Card.png"
+    },
+    {
+      "game_name": "Fortune Neko",
+      "game_uid": "49b706ccfe7c53727ee6760cd9a8721a",
+      "game_type": "Slot Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Fortune-Neko.png"
+    },
+    {
+      "game_name": "Book Of Mystery",
+      "game_uid": "13072a6eb2111c1b5202fe6155227e94",
+      "game_type": "Slot Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Book-Of-Mystery.png"
+    },
+    {
+      "game_name": "Prosperitytiger",
+      "game_uid": "1d704bbb187a113229f3fdaa3b5406fe",
+      "game_type": "Slot Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Prosperitytiger.png"
+    },
+    {
+      "game_name": "Glamorous Girl",
+      "game_uid": "2663e14e5b455525252a25d9bd99e840",
+      "game_type": "Slot Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Glamorous-Girl.png"
+    },
+    {
+      "game_name": "Blossom Of Wealth",
+      "game_uid": "ed6fbaeb7a104dd7ed96fa1683a48669",
+      "game_type": "Slot Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Blossom-Of-Wealth.png"
+    },
+    {
+      "game_name": "Boom Fiesta",
+      "game_uid": "1ffb31ff605f1a7862a138f5cd712056",
+      "game_type": "Slot Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Boom-Fiesta.png"
+    },
+    {
+      "game_name": "Big Three Dragons",
+      "game_uid": "600c338d3fca2da208f1bba2c9d29059",
+      "game_type": "Slot Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Big-Three-Dragons.png"
+    },
+    {
+      "game_name": "Mayagoldcrazy",
+      "game_uid": "6c8009d165293759bb218b72ba3c380f",
+      "game_type": "Slot Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Mayagoldcrazy.png"
+    },
+    {
+      "game_name": "Lantern Wealth",
+      "game_uid": "f2f2eae301311f0320ef669b68935546",
+      "game_type": "Slot Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Lantern-Wealth.png"
+    },
+    {
+      "game_name": "Marvelous Iv",
+      "game_uid": "126cf2bfe8a8e606b362d23de02c0d5e",
+      "game_type": "Slot Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Marvelous-Iv.png"
+    },
+    {
+      "game_name": "Wonder Elephant",
+      "game_uid": "540da2ba4c849fc1c315f43ae74df220",
+      "game_type": "Slot Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Wonder-Elephant.png"
+    },
+    {
+      "game_name": "Kong",
+      "game_uid": "f6e9fd31cbc3be8cd3bd95486177377b",
+      "game_type": "Slot Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Kong.png"
+    },
+    {
+      "game_name": "Lucky Diamond",
+      "game_uid": "6f6867ad1956a04b174c92629cab7f54",
+      "game_type": "Slot Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Lucky-Diamond.png"
+    },
+    {
+      "game_name": "Spindrift 2",
+      "game_uid": "05dc8c7a43305c3fcb43574c570d6378",
+      "game_type": "Slot Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Spindrift-2.png"
+    },
+    {
+      "game_name": "Jungle Jungle",
+      "game_uid": "6c5fe548bd6e09b683566298b29510ea",
+      "game_type": "Slot Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Jungle-Jungle.png"
+    },
+    {
+      "game_name": "Dragons Gate",
+      "game_uid": "feaba603992f26633116fb54562e3693",
+      "game_type": "Slot Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Dragons-Gate.png"
+    },
+    {
+      "game_name": "Spindrift",
+      "game_uid": "b624d1917ef5a740c151e4904a7cf0dd",
+      "game_type": "Slot Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Spindrift.png"
+    },
+    {
+      "game_name": "Double Wilds",
+      "game_uid": "7bd5233c83de0669336ee649e6c8d2b5",
+      "game_type": "Slot Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Double-Wilds.png"
+    },
+    {
+      "game_name": "Moneybags Man",
+      "game_uid": "c4fdebb24ff26fffb3a65d018da8ae92",
+      "game_type": "Slot Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Moneybags-Man.png"
+    },
+    {
+      "game_name": "Miner Babe",
+      "game_uid": "e705514fdd4f9bea5f82bbd0b2c0a353",
+      "game_type": "Slot Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Miner-Babe.png"
+    },
+    {
+      "game_name": "Super Niubi Deluxe",
+      "game_uid": "5d940d11c48b64ec1e6a3c8be5228250",
+      "game_type": "Slot Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Super-Niubi-Deluxe.png"
+    },
+    {
+      "game_name": "Funky King Kong",
+      "game_uid": "cdea2d0670bc40309b4a9b6f942a218a",
+      "game_type": "Slot Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Funky-King-Kong.png"
+    },
+    {
+      "game_name": "Golden Disco",
+      "game_uid": "dfb8a198ce0e821560cf543387a2acc2",
+      "game_type": "Slot Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Golden-Disco.png"
+    },
+    {
+      "game_name": "Treasure Bowl",
+      "game_uid": "0651af3e73c7600633522ffe15cc175b",
+      "game_type": "Slot Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Treasure-Bowl.png"
+    },
+    {
+      "game_name": "Mjolnir",
+      "game_uid": "e270f0674dff538b181499d18ab47845",
+      "game_type": "Slot Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Mjolnir.png"
+    },
+    {
+      "game_name": "Pirate Treasure",
+      "game_uid": "bfb3241e64953f731e72bc833f2fa79a",
+      "game_type": "Slot Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Pirate-Treasure.png"
+    },
+    {
+      "game_name": "Fortune Treasure",
+      "game_uid": "5a55a19d9cfbead5e64b8169e96bd27a",
+      "game_type": "Slot Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Fortune-Treasure.png"
+    },
+    {
+      "game_name": "Egypt Treasure",
+      "game_uid": "b7f39e861e2e02633cb5cb08958f1041",
+      "game_type": "Slot Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Egypt-Treasure.png"
+    },
+    {
+      "game_name": "Super Niubi",
+      "game_uid": "4042e5d0c777e1d3c3bd481dac0a867e",
+      "game_type": "Slot Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Super-Niubi.png"
+    },
+    {
+      "game_name": "Dragons World",
+      "game_uid": "00b886803f3d067f7028872468e84745",
+      "game_type": "Slot Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Dragons-World.png"
+    },
+    {
+      "game_name": "Go Lai Fu",
+      "game_uid": "a3584394182e8abce362d90c2f048c75",
+      "game_type": "Slot Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Go-Lai-Fu.png"
+    },
+    {
+      "game_name": "Birds Party",
+      "game_uid": "7b497c4d19f87c86ea29910c12129edc",
+      "game_type": "Slot Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Birds-Party.png"
+    },
+    {
+      "game_name": "Triple King Kong",
+      "game_uid": "a9f60e017f2765c74e1ec80473ac4ffa",
+      "game_type": "Slot Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Triple-King-Kong.png"
+    },
+    {
+      "game_name": "Orient Animals",
+      "game_uid": "bdb0459f7e116a20839a3b2a0063a2ff",
+      "game_type": "Slot Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Orient-Animals.png"
+    },
+    {
+      "game_name": "Lucky Seven",
+      "game_uid": "b560b7c42bd29f7d0cda06485a3c4af5",
+      "game_type": "Slot Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Lucky-Seven.png"
+    },
+    {
+      "game_name": "Lucky Racing",
+      "game_uid": "8b51a987c5c536a894b592ae361d655d",
+      "game_type": "Slot Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Lucky-Racing.png"
+    },
+    {
+      "game_name": "Mining Upstart",
+      "game_uid": "a26bdb5af2cf4964dfb241fbaec09252",
+      "game_type": "Slot Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Mining-Upstart.png"
+    },
+    {
+      "game_name": "Rolling In Money",
+      "game_uid": "55bfa979698650a3580d169c1469f79c",
+      "game_type": "Slot Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Rolling-In-Money.png"
+    },
+    {
+      "game_name": "Daji",
+      "game_uid": "2254bbebab4925c0df6a98d9edcfeec4",
+      "game_type": "Slot Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Daji.png"
+    },
+    {
+      "game_name": "Kingsman",
+      "game_uid": "55e3b4d064b014a403be6ffba8c4343e",
+      "game_type": "Slot Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Kingsman.png"
+    },
+    {
+      "game_name": "Street Fighter",
+      "game_uid": "528e5d4fda0a34e233a28930783d2c63",
+      "game_type": "Slot Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Street-Fighter.png"
+    },
+    {
+      "game_name": "Dragon",
+      "game_uid": "735fcdbf9f5e6042132cc01e9860723f",
+      "game_type": "Slot Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Dragon.png"
+    },
+    {
+      "game_name": "Dragon Warrior",
+      "game_uid": "29135c91125ae1655f8c91eb29617705",
+      "game_type": "Slot Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Dragon-Warrior.png"
+    },
+    {
+      "game_name": "One Punch Man",
+      "game_uid": "5aa472006c8698cf6f59dd0548129cda",
+      "game_type": "Slot Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/One-Punch-Man.png"
+    },
+    {
+      "game_name": "Billionaire",
+      "game_uid": "16b1418fe87a6fa5628eec8cb40da056",
+      "game_type": "Slot Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Billionaire.png"
+    },
+    {
+      "game_name": "Mr. Bao",
+      "game_uid": "8c4681d49251042820069339dee4250c",
+      "game_type": "Slot Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Mr.-Bao.png"
+    },
+    {
+      "game_name": "Panda Panda",
+      "game_uid": "6652927614dccaf87d8965c509e96f82",
+      "game_type": "Slot Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Panda-Panda.png"
+    },
+    {
+      "game_name": "Legendary 5",
+      "game_uid": "04a3be36bbf1110345d53e07df9c9cc3",
+      "game_type": "Slot Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Legendary-5.png"
+    },
+    {
+      "game_name": "Chef Panda",
+      "game_uid": "078a7876afc6553fd0c0c9d1cbe0b04a",
+      "game_type": "Slot Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Chef-Panda.png"
+    },
+    {
+      "game_name": "Lucky Fuwa",
+      "game_uid": "55946533d07080972b83c4aae1d4be2f",
+      "game_type": "Slot Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Lucky-Fuwa.png"
+    },
+    {
+      "game_name": "Monkey King",
+      "game_uid": "5ecca33d3cabee8cbab8897ce2843459",
+      "game_type": "Slot Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Monkey-King.png"
+    },
+    {
+      "game_name": "Rooster In Love",
+      "game_uid": "2f24019dc8abbe05b984611462a1f01c",
+      "game_type": "Slot Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Rooster-In-Love.png"
+    },
+    {
+      "game_name": "Xi Yang Yang",
+      "game_uid": "f1496f1b49981a63e6064ac84517b5ae",
+      "game_type": "Slot Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Xi-Yang-Yang.png"
+    },
+    {
+      "game_name": "Fortune Horse",
+      "game_uid": "ca6e7b621b13077debbf1bf9d5a6c031",
+      "game_type": "Slot Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Fortune-Horse.png"
+    },
+    {
+      "game_name": "Flirting Scholar Tang Ii",
+      "game_uid": "857d3426c220b4003cd0e4521c07e94b",
+      "game_type": "Slot Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Flirting-Scholar-Tang-Ii.png"
+    },
+    {
+      "game_name": "Open Sesameii",
+      "game_uid": "558ca5b101d1be5bd7a08c6d01422c4f",
+      "game_type": "Slot Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Open-Sesameii.png"
+    },
+    {
+      "game_name": "Winning Mask Ii",
+      "game_uid": "955ab46e30fcda3b2446169409848fa7",
+      "game_type": "Slot Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Winning-Mask-Ii.png"
+    },
+    {
+      "game_name": "Guan Gong",
+      "game_uid": "90bfd55dcf41709d27f1f38fd4a314a9",
+      "game_type": "Slot Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Guan-Gong.png"
+    },
+    {
+      "game_name": "Beauty And The Kingdom",
+      "game_uid": "478d2e337f0d0a1b40e0e3521f89f1ba",
+      "game_type": "Slot Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Beauty-And-The-Kingdom.png"
+    },
+    {
+      "game_name": "Lucky Phoenix",
+      "game_uid": "8244e0afc46b2b8a3446ec18ae0e129a",
+      "game_type": "Slot Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Lucky-Phoenix.png"
+    },
+    {
+      "game_name": "Lucky Miner",
+      "game_uid": "8146db6ded1ef29540d262650817d090",
+      "game_type": "Slot Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Lucky-Miner.png"
+    },
+    {
+      "game_name": "Olympian Temple",
+      "game_uid": "ca11d9830495d2888d7e50770353ce32",
+      "game_type": "Slot Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Olympian-Temple.png"
+    },
+    {
+      "game_name": "Mahjong",
+      "game_uid": "e9d4b66c06a43e73ec8f1b2055f83c3a",
+      "game_type": "Slot Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Mahjong.png"
+    },
+    {
+      "game_name": "Banana Saga",
+      "game_uid": "77f407b50f00ec4569249b008a5adca0",
+      "game_type": "Slot Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Banana-Saga.png"
+    },
+    {
+      "game_name": "Open Sesame",
+      "game_uid": "d5cede7b6800bd9cd266cde8c4f73dc6",
+      "game_type": "Slot Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Open-Sesame.png"
+    },
+    {
+      "game_name": "Four Treasures",
+      "game_uid": "d53f82ab4fbb353480e012fd763bc339",
+      "game_type": "Slot Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Four-Treasures.png"
+    },
+    {
+      "game_name": "Napoleon",
+      "game_uid": "e4b973ece238c954fbcdf30fdfeae969",
+      "game_type": "Slot Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Napoleon.png"
+    },
+    {
+      "game_name": "New Year",
+      "game_uid": "319fb2a372755ff47f6adc4f36e67b0f",
+      "game_type": "Slot Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/New-Year.png"
+    },
+    {
+      "game_name": "Moonlight Treasure",
+      "game_uid": "85e29fa6b578c6bf131ad4fdff750acb",
+      "game_type": "Slot Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Moonlight-Treasure.png"
+    },
+    {
+      "game_name": "Lucky Lion",
+      "game_uid": "c1557ea0fad63c5e07b32d9f62ef1899",
+      "game_type": "Slot Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Lucky-Lion.png"
+    },
+    {
+      "game_name": "Lucky Qilin",
+      "game_uid": "f2298bcf0de0dccdd767d30b6e4f811a",
+      "game_type": "Slot Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Lucky-Qilin.png"
+    },
+    {
+      "game_name": "Formosa Bear",
+      "game_uid": "e0afed167c1ef4c9a35c527a52419f0a",
+      "game_type": "Slot Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Formosa-Bear.png"
+    },
+    {
+      "game_name": "The Llama Adventure",
+      "game_uid": "6800ef74e2b33c9a9155848f1328c8e5",
+      "game_type": "Slot Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/The-Llama-Adventure.png"
+    },
+    {
+      "game_name": "Wukong",
+      "game_uid": "59acc6ad72fd6fb6cf30eb58cd9bedb8",
+      "game_type": "Slot Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Wukong.png"
+    },
+    {
+      "game_name": "Winning Mask",
+      "game_uid": "4aebce625a1495532a25344f0e4ac584",
+      "game_type": "Slot Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Winning-Mask.png"
+    },
+    {
+      "game_name": "Flirting Scholar Tang",
+      "game_uid": "07df172c089e29e576aa41eeb0cbeb2b",
+      "game_type": "Slot Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Flirting-Scholar-Tang.png"
+    },
+    {
+      "game_name": "Lucky Dragons",
+      "game_uid": "c32fff242e09a234f7350bb9aaa055cc",
+      "game_type": "Slot Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Lucky-Dragons.png"
+    },
+    {
+      "game_name": "Spirit Tide Legend",
+      "game_uid": "638d38491dad4a6562713143b1fc6cc1",
+      "game_type": "Fish Game",
+      "icon": "https://drive.google.com/drive/folders/1Kspw4eE2ujFhE743nzkl_ZHSKodcYGtE"
+    },
+    {
+      "game_name": "Fishing Disco",
+      "game_uid": "e453b811fd1782fd2ade1f93ee0dee32",
+      "game_type": "Fish Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Fishing-Disco.png"
+    },
+    {
+      "game_name": "Dragon Master",
+      "game_uid": "f691d904ea681ce449263f7e9cc47c35",
+      "game_type": "Fish Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Dragon-Master.png"
+    },
+    {
+      "game_name": "Fishing Yilufa",
+      "game_uid": "877c97367d24925a11d342726eb0320f",
+      "game_type": "Fish Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Fishing-Yilufa.png"
+    },
+    {
+      "game_name": "Shade Dragons Fishing",
+      "game_uid": "89e967a8336fb8caad2c1b6d735588fe",
+      "game_type": "Fish Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Shade-Dragons-Fishing.png"
+    },
+    {
+      "game_name": "Cai Shen Fishing",
+      "game_uid": "6df463eabe5fcdaa033e1c89b9ffd162",
+      "game_type": "Fish Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Cai-Shen-Fishing.png"
+    },
+    {
+      "game_name": "Dragon Fishing Ii",
+      "game_uid": "6cef8d8ea517d86602db60fe9781b01b",
+      "game_type": "Fish Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Dragon-Fishing-Ii.png"
+    },
+    {
+      "game_name": "Dragon Fishing",
+      "game_uid": "1145d7cd96518a5ba2f77cb14cb363c4",
+      "game_type": "Fish Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Dragon-Fishing.png"
+    },
+    {
+      "game_name": "Plinko",
+      "game_uid": "cb54272cd536cf77eb6093bae2513095",
+      "game_type": "街机游戏",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Plinko.png"
+    },
+    {
+      "game_name": "Hilo",
+      "game_uid": "9ffbc085919e5e19f93a682fd3a737bb",
+      "game_type": "街机游戏",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Hilo.png"
+    },
+    {
+      "game_name": "Goal",
+      "game_uid": "0160b30b64598290365f61211fb84a7b",
+      "game_type": "街机游戏",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Goal.png"
+    },
+    {
+      "game_name": "Firework Burst",
+      "game_uid": "19f082ffb4656934e80459a73ab73037",
+      "game_type": "街机游戏",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Firework-Burst.png"
+    },
+    {
+      "game_name": "Mines",
+      "game_uid": "45a2a92108634508e5c47c690eb01c0b",
+      "game_type": "街机游戏",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Mines.png"
+    },
+    {
+      "game_name": "Galaxy Burst",
+      "game_uid": "37ca0b32e1908480e03db00cdc1bc2cf",
+      "game_type": "街机游戏",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Galaxy-Burst.png"
+    },
+    {
+      "game_name": "Jogo Do Bicho",
+      "game_uid": "0e8432be6bc0cab304b41bc964aaf154",
+      "game_type": "街机游戏",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Jogo-Do-Bicho.png"
+    },
+    {
+      "game_name": "Caishen Party",
+      "game_uid": "6437f1794f0753b268b2badbd69ef156",
+      "game_type": "街机游戏",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Caishen-Party.png"
+    },
+    {
+      "game_name": "Lucky Color Game",
+      "game_uid": "5708005e9f2340dbd719567a94ba44b4",
+      "game_type": "街机游戏",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Lucky-Color-Game.png"
+    },
+    {
+      "game_name": "King Of Football",
+      "game_uid": "4088c7ed9db461f990d9514d6b9f7537",
+      "game_type": "街机游戏",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/King-Of-Football.png"
+    },
+    {
+      "game_name": "Crazy King Kong",
+      "game_uid": "c2c611f87d47faae8e4b285fe8145d41",
+      "game_type": "街机游戏",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Crazy-King-Kong.png"
+    },
+    {
+      "game_name": "Super Super Fruit",
+      "game_uid": "a9899c045de7873e620e0ef330f3fc73",
+      "game_type": "街机游戏",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Super-Super-Fruit.png"
+    },
+    {
+      "game_name": "Huaguoshan Legends",
+      "game_uid": "6ff786580f7d9453728b9a8a3d1c3499",
+      "game_type": "街机游戏",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Huaguoshan-Legends.png"
+    },
+    {
+      "game_name": "Beer Tycoon",
+      "game_uid": "b133cf4f3c32b80344b381cc9f26442a",
+      "game_type": "街机游戏",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Beer-Tycoon.png"
+    },
+    {
+      "game_name": "Birds And Animals",
+      "game_uid": "db93ffd7164953bb1eb4c86b68542ed6",
+      "game_type": "街机游戏",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Birds-And-Animals.png"
+    },
+    {
+      "game_name": "Happy New Year",
+      "game_uid": "d0b0d503d3d553643f665d5d2fdab138",
+      "game_type": "街机游戏",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Happy-New-Year.png"
+    },
+    {
+      "game_name": "Classic Mario",
+      "game_uid": "627148e0dd36ff12df432fc920a0c59f",
+      "game_type": "街机游戏",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Classic-Mario.png"
+    },
+    {
+      "game_name": "Happy Lottery",
+      "game_uid": "d6cd29e274d066e2e8f0cb171e7583a8",
+      "game_type": "Lottery Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Happy-Lottery.png"
+    },
+    {
+      "game_name": "Gold Rooster Lottery",
+      "game_uid": "2f3361619ef9520214c08fd2aecf33da",
+      "game_type": "Lottery Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Gold-Rooster-Lottery.png"
+    },
+    {
+      "game_name": "Cai Shen Bingo",
+      "game_uid": "f3629935719cf04d6b689933486177ce",
+      "game_type": "Lottery Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Cai-Shen-Bingo.png"
+    },
+    {
+      "game_name": "Tongits Rush",
+      "game_uid": "3ecfba28c6c8f3ffce6c8134478a6bfa",
+      "game_type": "棋牌游戏",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Tongits-Rush.png"
+    },
+    {
+      "game_name": "Tongits Fight",
+      "game_uid": "6996a44ebff8fc97ce19cf791f4916cc",
+      "game_type": "棋牌游戏",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Tongits-Fight.png"
+    },
+    {
+      "game_name": "Pusoy Rush",
+      "game_uid": "f03953d954b4ac3809efbedd5dfabec2",
+      "game_type": "棋牌游戏",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Pusoy-Rush.png"
+    },
+    {
+      "game_name": "Dragon Tiger - Joker Bonus",
+      "game_uid": "067d540d7ece7e7dfcfcadf11f25a71d",
+      "game_type": "棋牌游戏",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Dragon-Tiger-Joker-Bonus.png"
+    },
+    {
+      "game_name": "Tongits",
+      "game_uid": "47614f18718c2f911b89f00fd053b527",
+      "game_type": "棋牌游戏",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Tongits.png"
+    },
+    {
+      "game_name": "Pusoy",
+      "game_uid": "f436610d0255b4e3646603a1e42793b7",
+      "game_type": "棋牌游戏",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Pusoy.png"
+    },
+    {
+      "game_name": "Fighter Fire",
+      "game_uid": "ff83699bef9b2e773857ed1a9eedc5fb",
+      "game_type": "Fish Game",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Fighter-Fire.png"
+    },
+    {
+      "game_name": "Dice",
+      "game_uid": "6aa921aebc8d7e170740cfc8e88426f6",
+      "game_type": "街机游戏",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Dice.png"
+    },
+    {
+      "game_name": "Mole Crash",
+      "game_uid": "a170eb308c8fab8f2a5cdac5b427acbd",
+      "game_type": "街机游戏",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Mole-Crash.png"
+    },
+    {
+      "game_name": "Mines2",
+      "game_uid": "b1ad7a48e4d4839dbe53fcadf7eb5183",
+      "game_type": "街机游戏",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Mines2.png"
+    },
+    {
+      "game_name": "Pusoy",
+      "game_uid": "524ff2b54801f94ada51a1e2b37c593e",
+      "game_type": "arcade",
+      "icon": "https://huidu-bucket.s3.ap-southeast-1.amazonaws.com/api/jdb/Pusoy.png"
+    },
+    {
+      "game_name": "Piggy Bank",
+      "game_uid": "7d21ecdabd01130a22326115d3967ffa",
+      "game_type": "Slot Game",
+      "icon": ""
+    }
+  ]
