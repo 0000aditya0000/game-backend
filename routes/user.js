@@ -677,7 +677,7 @@ router.post('/deposit', async (req, res) => {
                 const commissions = await calculateCommissions(amount, referrerId, cryptoname, connection);
                 for (const commission of commissions) {
                     const logQuery = `
-                        INSERT INTO ReferralCommissionHistory (user_id, referred_user_id, level, rebate_level, amount, deposit_amount, cryptoname, credited)
+                        INSERT INTO referralcommissionhistory (user_id, referred_user_id, level, rebate_level, amount, deposit_amount, cryptoname, credited)
                         VALUES (?, ?, ?, ?, ?, ?, ?, FALSE)
                     `;
                     await new Promise((resolve, reject) => {
@@ -746,7 +746,7 @@ router.get('/commissions/:userId', async (req, res) => {
 
         const commissionsQuery = `
             SELECT cryptoname, total_commissions, updated_at
-            FROM UserCommissions
+            FROM usercommissions
             WHERE userId = ?
         `;
         const commissions = await new Promise((resolve, reject) => {
