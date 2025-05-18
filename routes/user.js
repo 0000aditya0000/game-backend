@@ -746,7 +746,7 @@ router.get('/commissions/:userId', async (req, res) => {
 
         const commissionsQuery = `
             SELECT cryptoname, total_commissions, updated_at
-            FROM UserCommissions
+            FROM usercommissions
             WHERE userId = ?
         `;
         const commissions = await new Promise((resolve, reject) => {
