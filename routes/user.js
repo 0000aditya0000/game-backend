@@ -795,7 +795,7 @@ router.get('/commissions/:userId/:cryptoname', async (req, res) => {
 
         const commissionQuery = `
             SELECT cryptoname, total_commissions, updated_at
-            FROM UserCommissions
+            FROM usercommissions
             WHERE userId = ? AND cryptoname = ?
         `;
         const [commission] = await new Promise((resolve, reject) => {
@@ -840,7 +840,7 @@ router.get('/pending-commissions/:userId', async (req, res) => {
 
         const pendingCommissionsQuery = `
             SELECT cryptoname, SUM(amount) as pending_amount, COUNT(*) as commission_count
-            FROM ReferralCommissionHistory
+            FROM referralcommissionhistory
             WHERE user_id = ? AND credited = FALSE
             GROUP BY cryptoname
         `;
