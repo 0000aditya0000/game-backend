@@ -732,44 +732,61 @@ router.get('/commissions/:userId', async (req, res) => {
     }
 
     try {
+        // First check if user exists
         const userQuery = "SELECT id FROM users WHERE id = ?";
-        const [userResult] = await new Promise((resolve, reject) => {
+        const userResult = await new Promise((resolve, reject) => {
             connection.query(userQuery, [userId], (err, results) => {
-                if (err) return reject(err);
+                if (err) {
+                    console.error('Error checking user existence:', err);
+                    reject(err);
+                    return;
+                }
                 resolve(results);
             });
         });
 
-        if (!userResult) {
+        if (!userResult || userResult.length === 0) {
             return res.status(404).json({ error: 'User not found' });
         }
 
+        // Get commissions data
         const commissionsQuery = `
-            SELECT cryptoname, total_commissions, updated_at
+            SELECT 
+                cryptoname, 
+                COALESCE(total_commissions, 0) as total_commissions,
+                updated_at
             FROM UserCommissions
             WHERE userId = ?
         `;
+        
         const commissions = await new Promise((resolve, reject) => {
             connection.query(commissionsQuery, [userId], (err, results) => {
-                if (err) return reject(err);
-                resolve(results);
+                if (err) {
+                    console.error('Error fetching commissions:', err);
+                    reject(err);
+                    return;
+                }
+                resolve(results || []);
             });
         });
 
-        res.json({
+        return res.json({
             userId: parseInt(userId),
-            commissions: commissions.length > 0 ? commissions : [],
+            commissions: commissions,
             message: commissions.length > 0 ? 'Total commissions retrieved successfully' : 'No commissions found for this user'
         });
+
     } catch (error) {
         console.error(`Error retrieving commissions for user ${userId}:`, error);
-        res.status(500).json({ error: 'Internal server error' });
+        return res.status(500).json({ 
+            error: 'Internal server error',
+            details: process.env.NODE_ENV === 'development' ? error.message : undefined
+        });
     }
 });
 
 router.get('/commissions/:userId/:cryptoname', async (req, res) => {
     const { userId, cryptoname } = req.params;
-
     const validCryptos = ['BTC', 'ETH', 'LTC', 'USDT', 'SOL', 'DOGE', 'BCH', 'XRP', 'TRX', 'EOS', 'INR', 'CP'];
 
     if (!userId || isNaN(userId)) {
@@ -781,40 +798,66 @@ router.get('/commissions/:userId/:cryptoname', async (req, res) => {
     }
 
     try {
+        // First check if user exists
         const userQuery = "SELECT id FROM users WHERE id = ?";
-        const [userResult] = await new Promise((resolve, reject) => {
+        const userResult = await new Promise((resolve, reject) => {
             connection.query(userQuery, [userId], (err, results) => {
-                if (err) return reject(err);
+                if (err) {
+                    console.error('Error checking user existence:', err);
+                    reject(err);
+                    return;
+                }
                 resolve(results);
             });
         });
 
-        if (!userResult) {
+        if (!userResult || userResult.length === 0) {
             return res.status(404).json({ error: 'User not found' });
         }
 
+        // Get specific crypto commission
         const commissionQuery = `
-            SELECT cryptoname, total_commissions, updated_at
+            SELECT 
+                cryptoname, 
+                COALESCE(total_commissions, 0) as total_commissions,
+                updated_at
             FROM UserCommissions
             WHERE userId = ? AND cryptoname = ?
         `;
-        const [commission] = await new Promise((resolve, reject) => {
+        
+        const commissionResult = await new Promise((resolve, reject) => {
             connection.query(commissionQuery, [userId, cryptoname], (err, results) => {
-                if (err) return reject(err);
+                if (err) {
+                    console.error('Error fetching specific commission:', err);
+                    reject(err);
+                    return;
+                }
                 resolve(results);
             });
         });
 
-        res.json({
+        const commission = commissionResult[0] || {
+            cryptoname: cryptoname,
+            total_commissions: 0,
+            updated_at: null
+        };
+
+        return res.json({
             userId: parseInt(userId),
             cryptoname,
-            total_commissions: commission ? commission.total_commissions : 0,
-            updated_at: commission ? commission.updated_at : null,
-            message: commission ? 'Total commissions retrieved successfully' : 'No commissions found for this user in the specified cryptocurrency'
+            total_commissions: commission.total_commissions,
+            updated_at: commission.updated_at,
+            message: commission.total_commissions > 0 ? 
+                'Total commissions retrieved successfully' : 
+                'No commissions found for this user in the specified cryptocurrency'
         });
+
     } catch (error) {
         console.error(`Error retrieving commissions for user ${userId} in ${cryptoname}:`, error);
-        res.status(500).json({ error: 'Internal server error' });
+        return res.status(500).json({ 
+            error: 'Internal server error',
+            details: process.env.NODE_ENV === 'development' ? error.message : undefined
+        });
     }
 });
 
