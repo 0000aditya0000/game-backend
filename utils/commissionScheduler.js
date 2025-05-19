@@ -16,7 +16,7 @@ cron.schedule('30 18 * * *', async () => {
         // Find all uncredited commissions
         const uncreditedCommissionsQuery = `
             SELECT user_id, cryptoname, SUM(amount) as total_amount
-            FROM ReferralCommissionHistory
+            FROM referralcommissionhistory
             WHERE credited = FALSE
             GROUP BY user_id, cryptoname
         `;
@@ -61,7 +61,7 @@ cron.schedule('30 18 * * *', async () => {
 
             // Update UserCommissions
             const updateCommissionsQuery = `
-                INSERT INTO UserCommissions (userId, cryptoname, total_commissions)
+                INSERT INTO usercommissions (userId, cryptoname, total_commissions)
                 VALUES (?, ?, ?)
                 ON DUPLICATE KEY UPDATE total_commissions = total_commissions + ?
             `;
@@ -75,7 +75,7 @@ cron.schedule('30 18 * * *', async () => {
 
         // Mark commissions as credited
         const markCreditedQuery = `
-            UPDATE ReferralCommissionHistory
+            UPDATE referralcommissionhistory
             SET credited = TRUE
             WHERE credited = FALSE
         `;
