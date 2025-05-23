@@ -135,8 +135,8 @@ app.post("/generate-result", async (req, res) => {
 
   try {
     // Validate input
-      const { periodNumber } = req.body;
-      console.log(periodNumber)
+    const { periodNumber } = req.body;
+    console.log(periodNumber)
     if (isNaN(periodNumber) || periodNumber < 1) {
       return res.status(400).json({ error: "Invalid period number." });
     }
@@ -190,27 +190,24 @@ app.post("/generate-result", async (req, res) => {
       voilet: [0, 5, 0, 5],
     };
     // const candidates = validNumbers[winningColor];
- 
-  let winningNumber;
-if (winningColor) {
-  const numbers = validNumbers[winningColor];
-  winningNumber = numbers[Math.floor(Math.random() * numbers.length)];
-  console.log('Winning Color:', winningColor);
-  console.log('Valid Numbers:', numbers);
-  console.log('Selected Number:', winningNumber);
-} else {
-  return res.status(400).json({ error: "Invalid winning color" });
-}
+
+    let winningNumber;
+    if (winningColor) {
+      const numbers = validNumbers[winningColor];
+      winningNumber = numbers[Math.floor(Math.random() * numbers.length)];
+    } else {
+      return res.status(400).json({ error: "Invalid winning color" });
+    }
 
 
-      
+
     // if (!winningNumber || !candidates.includes(parseInt(winningNumber))) {
     //     winningNumber = candidates[Math.floor(Math.random() * candidates.length)];
     // }
 
     // Determine winning size based on winning number
     const winningSize = getSize(winningNumber);
-     console.log(winningNumber)
+    console.log(winningNumber)
 
     // Store result in database with period number
     await pool.query(
@@ -249,7 +246,7 @@ if (winningColor) {
     });
   } catch (error) {
     console.error(error);
-    return res.status(404).json({success : false , message : "Error in generate-result ", error:error.message})
+    return res.status(404).json({ success: false, message: "Error in generate-result ", error: error.message })
   }
 });
 
