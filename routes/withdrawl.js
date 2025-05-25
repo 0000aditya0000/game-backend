@@ -6,7 +6,7 @@ const router = express.Router();
 router.post('/withdrawl', async (req, res) => {
   console.log("api called");
   const { userId, balance, cryptoname, status } = req.body;
-  console.log(userId,balance,cryptoname,status);
+  console.log(userId, balance, cryptoname, status);
 
   if (!userId || !cryptoname || !balance || balance <= 0) {
     console.log("I am in");
@@ -16,11 +16,11 @@ router.post('/withdrawl', async (req, res) => {
 
   try {
     // Start a transaction to ensure atomicity
-    connection.beginTransaction((err,results) => {
+    connection.beginTransaction((err, results) => {
       if (err) {
         console.error('Transaction error:', err);
         return res.status(500).json({ error: 'Transaction initialization failed' });
-      }else{
+      } else {
         console.log(results);
       }
 
@@ -41,7 +41,7 @@ router.post('/withdrawl', async (req, res) => {
               res.status(500).json({ error: 'Error updating wallet balance' });
             });
           }
-          
+
 
           if (results.affectedRows === 0) {
             return connection.rollback(() => {
@@ -256,6 +256,121 @@ router.delete('/withdrawl/:id', async (req, res) => {
   } catch (error) {
     console.error('Error deleting withdrawal entry:', error);
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ============================withdrawal apporove or reject==================================
+router.put('/withdrawal/approve/:id', async (req, res) => {
+  try {
+    const withdrawalId = req.params.id;
+    const numericStatus = parseInt(req.body.status); // status: 1 for approve, 2 for reject
+
+    // First get withdrawal details
+    const getWithdrawalQuery = "SELECT * FROM withdrawl WHERE id = ? AND status = 0";
+
+    connection.beginTransaction(err => {
+      if (err) {
+        return res.status(500).json({
+          success: false,
+          message: "Transaction initialization failed"
+        });
+      }
+
+      connection.query(getWithdrawalQuery, [withdrawalId], (err, withdrawals) => {
+        if (err) {
+          return connection.rollback(() => {
+            res.status(500).json({
+              success: false,
+              message: "Error fetching withdrawal details"
+            });
+          });
+        }
+
+        if (!withdrawals.length) {
+          return connection.rollback(() => {
+            res.status(404).json({
+              success: false,
+              message: "Withdrawal request not found or already processed"
+            });
+          });
+        }
+
+        const withdrawal = withdrawals[0];
+
+        // If rejecting, refund the amount
+        if (numericStatus === 2) {
+          const refundQuery = `
+            UPDATE wallet 
+            SET balance = balance + ? 
+            WHERE userId = ? AND cryptoname = ?
+          `;
+
+          connection.query(refundQuery,
+            [withdrawal.balance, withdrawal.userId, withdrawal.cryptoname],
+            (err) => {
+              if (err) {
+                return connection.rollback(() => {
+                  res.status(500).json({
+                    success: false,
+                    message: "Failed to refund amount"
+                  });
+                });
+              }
+
+              updateWithdrawalStatus();
+            }
+          );
+        } else {
+          updateWithdrawalStatus();
+        }
+
+        function updateWithdrawalStatus() {
+          const updateQuery = "UPDATE withdrawl SET status = ? WHERE id = ?";
+
+          connection.query(updateQuery, [numericStatus, withdrawalId], (err) => {
+            if (err) {
+              return connection.rollback(() => {
+                res.status(500).json({
+                  success: false,
+                  message: "Failed to update withdrawal status"
+                });
+              });
+            }
+
+            connection.commit(err => {
+              if (err) {
+                return connection.rollback(() => {
+                  res.status(500).json({
+                    success: false,
+                    message: "Transaction commit failed"
+                  });
+                });
+              }
+
+              res.json({
+                success: true,
+                message: numericStatus === 1 ?
+                  'Withdrawal approved successfully' :
+                  'Withdrawal rejected and amount refunded',
+                data: {
+                  withdrawalId,
+                  status: numericStatus === 1 ? 'approved' : 'rejected',
+                  amount: withdrawal.balance,
+                  cryptoname: withdrawal.cryptoname
+                }
+              });
+            });
+          });
+        }
+      });
+    });
+  } catch (error) {
+    console.error('Error processing withdrawal:', error);
+    res.status(500).json({
+      success: false,
+      message: "Unable to process withdrawal",
+      error: error.message
+    });
   }
 });
 

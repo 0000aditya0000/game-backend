@@ -57,7 +57,7 @@ router.post('/redeem', async (req, res) => {
             if (!coupons.length) return res.status(400).json({
                 success: false,
                 message: "Coupon invalid, expired, or fully used"
-            });   
+            });
 
             const coupon = coupons[0];
 
