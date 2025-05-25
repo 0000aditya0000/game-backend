@@ -2,6 +2,7 @@ const express = require('express');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const connection = require('../config/db');
+const { createSession } = require("../utils/session");
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
@@ -166,20 +167,8 @@ router.post('/login', async (req, res) => {
       const isMatch = await bcrypt.compare(password, user.password);
       if (!isMatch) return res.status(401).json({ error: 'Invalid credentials' });
 
-      // **Invalidate previous session** (Delete any existing session for the user)
-      const deleteSessionQuery = "DELETE FROM sessions WHERE user_id = ?";
-      connection.query(deleteSessionQuery, [user.id], (err) => {
-        if (err) console.error('Error deleting previous session:', err);
-      });
-
-      // Generate new JWT token
-      const token = jwt.sign({ id: user.id }, process.env.JWT_SECRET, { expiresIn: '1h' });
-
-      // **Store new session in DB**
-      const insertSessionQuery = "INSERT INTO sessions (user_id, token) VALUES (?, ?)";
-      connection.query(insertSessionQuery, [user.id, token], (err) => {
-        if (err) console.error('Error saving session:', err);
-      });
+      // Create session (deletes old one and inserts new one)
+      const token = await createSession(user.id);
 
       // Fetch wallet details for the logged-in user
       const walletQuery = "SELECT * FROM wallet WHERE userId = ?";

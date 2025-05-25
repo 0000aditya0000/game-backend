@@ -19,7 +19,8 @@ app.use("/api/bankaccount", require("./routes/bankAccount"));
 app.use("/api/wallet", require("./routes/withdrawl"));
 app.use("/api/slider", require("./routes/slider"));
 app.use("/api/color", require("./routes/colorPrediction"));
-app.use("/api/coupons",require("./routes/coupons"))
+app.use("/api/coupons",require("./routes/coupons"));
+app.use("/api/recharge", require("./routes/recharge"));
 
 app.listen(PORT, () => {
     console.log(`Server is running on port ${PORT}`);
