@@ -1108,4 +1108,175 @@ router.get('/all-users-data', async (req, res) => {
   }
 });
 
+//====================how many coupons a user have redeem======== 
+// Get user's coupon redemption history
+router.get('/coupons/:userId/', async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    // First check if user exists
+    const userQuery = "SELECT id, username FROM users WHERE id = ?";
+    const [user] = await new Promise((resolve, reject) => {
+      connection.query(userQuery, [userId], (err, results) => {
+        if (err) reject(err);
+        resolve(results);
+      });
+    });
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found"
+      });
+    }
+
+    // Get coupon redemption history
+    const couponQuery = `
+      SELECT 
+        c.code,
+        c.amount,
+        cu.used_at as redeemed_at,
+        cu.amount_credited,
+        CASE 
+          WHEN c.expires_at < NOW() THEN 'expired'
+          ELSE 'active'
+        END as coupon_status
+      FROM coupon_usage cu
+      JOIN coupons c ON cu.coupon_id = c.id
+      WHERE cu.user_id = ?
+      ORDER BY cu.used_at DESC
+    `;
+
+    const couponHistory = await new Promise((resolve, reject) => {
+      connection.query(couponQuery, [userId], (err, results) => {
+        if (err) reject(err);
+        resolve(results);
+      });
+    });
+
+    // Get summary statistics (without first/last redemption)
+    const stats = {
+      total_coupons_redeemed: couponHistory.length,
+      total_amount_credited: couponHistory.reduce((sum, item) => {
+        return sum + parseFloat(item.amount_credited || 0);
+      }, 0)
+    };
+
+    res.json({
+      success: true,
+      user: {
+        id: user.id,
+        username: user.username
+      },
+      statistics: stats,
+      redemption_history: couponHistory
+    });
+
+  } catch (error) {
+    console.error('Error fetching coupon history:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching coupon history',
+      error: error.message
+    });
+  }
+});
+
+//============== Get user's transaction history=============
+router.get('/transactions/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    // First check if user exists
+    const userQuery = "SELECT id, username FROM users WHERE id = ?";
+    const [user] = await new Promise((resolve, reject) => {
+      connection.query(userQuery, [userId], (err, results) => {
+        if (err) reject(err);
+        resolve(results);
+      });
+    });
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found"
+      });
+    }
+
+    // Get recharge history
+    const rechargeQuery = `
+            SELECT 
+                'recharge' as transaction_type,
+                recharge_id as id,
+                order_id,
+                recharge_amount as amount,
+                recharge_type as type,
+                payment_mode,
+                recharge_status as status,
+                CONCAT(date, ' ', time) as transaction_date
+            FROM recharge 
+            WHERE userId = ?`;
+
+    // Get withdrawal history
+    const withdrawalQuery = `
+            SELECT 
+                'withdrawal' as transaction_type,
+                id,
+                balance as amount,
+                cryptoname as type,
+                CASE 
+                    WHEN status = 0 THEN 'pending'
+                    WHEN status = 1 THEN 'approved'
+                    WHEN status = 2 THEN 'rejected'
+                END as status,
+                NULL as order_id,
+                NULL as payment_mode,
+                DATE_FORMAT(NOW(), '%Y-%m-%d %H:%i:%s') as transaction_date
+            FROM withdrawl 
+            WHERE userId = ?`;
+
+    // Execute both queries
+    const [recharges, withdrawals] = await Promise.all([
+      new Promise((resolve, reject) => {
+        connection.query(rechargeQuery, [userId], (err, results) => {
+          if (err) reject(err);
+          resolve(results);
+        });
+      }),
+      new Promise((resolve, reject) => {
+        connection.query(withdrawalQuery, [userId], (err, results) => {
+          if (err) reject(err);
+          resolve(results);
+        });
+      })
+    ]);
+
+    // Combine and sort all transactions by date
+    const allTransactions = [...recharges, ...withdrawals]
+      .sort((a, b) => new Date(b.transaction_date) - new Date(a.transaction_date));
+
+    res.json({
+      success: true,
+      user: {
+        id: user.id,
+        username: user.username
+      },
+      transactions: allTransactions.map(transaction => ({
+        ...transaction,
+        transaction_date: new Date(transaction.transaction_date).toLocaleString()
+      }))
+    });
+
+  } catch (error) {
+    console.error('Error fetching transaction history:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching transaction history',
+      error: error.message
+    });
+  }
+});
+
+
+
 module.exports = router;
