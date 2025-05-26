@@ -150,4 +150,87 @@ router.get('/all', async (req, res) => {
     }
 });
 
+
+router.get('/history/:couponId', async (req, res) => {
+    try {
+        const { couponId } = req.params;
+
+        // First get coupon details
+        const couponQuery = `
+            SELECT 
+                c.code,
+                c.amount,
+                c.usage_limit,
+                c.expires_at,
+                COUNT(cu.id) as total_redeems,
+                c.usage_limit - COUNT(cu.id) as remaining_uses
+            FROM coupons c
+            LEFT JOIN coupon_usage cu ON c.id = cu.coupon_id
+            WHERE c.id = ?
+            GROUP BY c.id
+        `;
+
+        connection.query(couponQuery, [couponId], (err, couponResults) => {
+            if (err) {
+                console.error('Database error:', err);
+                return res.status(500).json({
+                    success: false,
+                    message: "Error fetching coupon details"
+                });
+            }
+
+            if (!couponResults.length) {
+                return res.status(404).json({
+                    success: false,
+                    message: "Coupon not found"
+                });
+            }
+
+            // Get redemption details
+            const redemptionsQuery = `
+                SELECT 
+                    u.id as user_id,
+                    u.username,
+                    cu.used_at as redeemed_at,
+                    cu.amount_credited
+                FROM coupon_usage cu
+                JOIN users u ON cu.user_id = u.id
+                WHERE cu.coupon_id = ?
+                ORDER BY cu.used_at DESC
+            `;
+
+            connection.query(redemptionsQuery, [couponId], (err, redemptionResults) => {
+                if (err) {
+                    console.error('Database error:', err);
+                    return res.status(500).json({
+                        success: false,
+                        message: "Error fetching redemption details"
+                    });
+                }
+
+                const coupon = couponResults[0];
+
+                res.json({
+                    success: true,
+                    data: {
+                        code: coupon.code,
+                        amount: coupon.amount,
+                        usage_limit: coupon.usage_limit,
+                        expires_at: coupon.expires_at,
+                        total_redeems: coupon.total_redeems,
+                        remaining_uses: coupon.remaining_uses,
+                        redemptions: redemptionResults
+                    }
+                });
+            });
+        });
+    } catch (error) {
+        console.error('Error:', error);
+        res.status(500).json({
+            success: false,
+            message: "Internal server error"
+        });
+    }
+});
+
 module.exports = router;
