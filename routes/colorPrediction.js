@@ -1,4 +1,3 @@
-
 const express = require("express");
 const mysql = require("mysql2/promise");
 const bodyParser = require("body-parser");
@@ -131,8 +130,6 @@ app.get("/prediction/:userid/history", async (req, res) => {
 
 // Generate result and distribute winnings
 app.post("/generate-result", async (req, res) => {
-
-
   try {
     // Validate input
     const { periodNumber } = req.body;
@@ -226,9 +223,9 @@ app.post("/generate-result", async (req, res) => {
         const winnings = bet.amount * 1.9; // 90% return
         await pool.query(
           `UPDATE wallet w
-                   JOIN users u ON u.id = w.userId
+                   JOIN users u ON u.id = w.UserId
                    SET w.balance = w.balance + ?
-                   WHERE w.userId = ? AND w.cryptoname = 'INR'`,
+                   WHERE w.UserId = ? AND w.cryptoname = 'INR'`,
           [winnings, bet.user_id]
         );
       }
@@ -237,13 +234,71 @@ app.post("/generate-result", async (req, res) => {
     // Mark all bets for the specified period as processed
     await pool.query("UPDATE bets SET status = 'processed' WHERE period_number = ?", [periodNumber]);
 
-    res.json({
-      message: "Result generated successfully.",
-      winningNumber,
-      winningColor,
-      winningSize,
-      periodNumber,
-    });
+    // Fetch and return the detailed result including color bets summary
+    const resultDetails = await pool.query(
+      `
+      SELECT 
+          r.period_number,
+          r.result_color,
+          r.result_number,
+          SUM(CASE WHEN b.bet_type = 'color' THEN b.amount ELSE 0 END) AS total_color_bets,
+          COUNT(DISTINCT CASE WHEN b.bet_type = 'color' THEN b.user_id END) AS unique_color_bettors
+      FROM result r
+      LEFT JOIN bets b ON r.period_number = b.period_number AND b.status = 'processed'
+      WHERE r.period_number = ?
+      GROUP BY r.period_number, r.result_color, r.result_number
+      `,
+      [periodNumber]
+    );
+
+    const colorBetsSummary = {
+      red: {
+        total_bets: 0,
+        total_amount: 0,
+        unique_users: 0,
+      },
+      green: {
+        total_bets: 0,
+        total_amount: 0,
+        unique_users: 0,
+      },
+      voilet: {
+        total_bets: 0,
+        total_amount: 0,
+        unique_users: 0,
+      },
+    };
+
+    if (resultDetails.length > 0) {
+      const details = resultDetails[0];
+      colorBetsSummary.red.total_bets = details.total_color_bets || 0;
+      colorBetsSummary.red.total_amount = details.total_color_bets || 0;
+      colorBetsSummary.red.unique_users = details.unique_color_bettors || 0;
+      colorBetsSummary.green.total_bets = details.total_color_bets || 0;
+      colorBetsSummary.green.total_amount = details.total_color_bets || 0;
+      colorBetsSummary.green.unique_users = details.unique_color_bettors || 0;
+      colorBetsSummary.voilet.total_bets = details.total_color_bets || 0;
+      colorBetsSummary.voilet.total_amount = details.total_color_bets || 0;
+      colorBetsSummary.voilet.unique_users = details.unique_color_bettors || 0;
+    }
+
+    // Prepare the final response object
+    const response = {
+      success: true,
+      period_number: periodNumber,
+      result: {
+        winning_color: winningColor,
+        winning_number: winningNumber,
+      },
+      color_bets: colorBetsSummary,
+      summary: {
+        total_bets: Object.values(colorBetsSummary).reduce((sum, color) => sum + color.total_bets, 0),
+        total_amount: Object.values(colorBetsSummary).reduce((sum, color) => sum + color.total_amount, 0),
+        total_unique_users: Object.values(colorBetsSummary).reduce((sum, color) => sum + color.unique_users, 0),
+      },
+    };
+
+    res.json(response);
   } catch (error) {
     console.error(error);
     return res.status(404).json({ success: false, message: "Error in generate-result ", error: error.message })
@@ -483,5 +538,87 @@ app.post("/launchGame", async (req, res) => {
     res.status(500).json({ success: false, message: "Failed to launch game.", error: error.message });
   }
 })
+
+
+
+// ===================  Get color bet report for a specific period =================
+app.get('/color-bet-report/:periodNumber', async (req, res) => {
+    try {
+        const { periodNumber } = req.params;
+
+        if (!periodNumber) {
+            return res.status(400).json({
+                success: false,
+                message: "Period number is required"
+            });
+        }
+
+        // Get total bets for each color in the specified period
+        const colorQuery = `
+            SELECT 
+                bet_value as color,
+                COUNT(*) as total_bets,
+                SUM(amount) as total_amount,
+                COUNT(DISTINCT user_id) as unique_users
+            FROM bets 
+            WHERE period_number = ? 
+            AND bet_type = 'color'
+            GROUP BY bet_value
+        `;
+
+        const [colorBets] = await pool.query(colorQuery, [periodNumber]);
+
+        // Get result for this period
+        const resultQuery = `
+            SELECT result_color, result_number 
+            FROM result 
+            WHERE period_number = ?
+        `;
+
+        const [periodResult] = await pool.query(resultQuery, [periodNumber]);
+
+        // Initialize report structure with all colors
+        const report = {
+            red: { total_bets: 0, total_amount: 0, unique_users: 0 },
+            green: { total_bets: 0, total_amount: 0, unique_users: 0 },
+            voilet: { total_bets: 0, total_amount: 0, unique_users: 0 }
+        };
+
+        // Fill in actual bet data
+        colorBets.forEach(bet => {
+            if (report[bet.color]) {
+                report[bet.color] = {
+                    total_bets: bet.total_bets,
+                    total_amount: parseFloat(bet.total_amount),
+                    unique_users: bet.unique_users
+                };
+            }
+        });
+
+        res.json({
+            success: true,
+            period_number: periodNumber,
+            result: periodResult.length ? {
+                winning_color: periodResult[0].result_color,
+                winning_number: periodResult[0].result_number
+            } : null,
+            color_bets: report,
+            summary: {
+                total_bets: Object.values(report).reduce((sum, color) => sum + color.total_bets, 0),
+                total_amount: Object.values(report).reduce((sum, color) => sum + color.total_amount, 0),
+                total_unique_users: Object.values(report).reduce((sum, color) => sum + color.unique_users, 0)
+            }
+        });
+
+    } catch (error) {
+        console.error('Error generating color bet report:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error generating color bet report',
+            error: error.message
+        });
+    }
+});
+
 
 module.exports = app;

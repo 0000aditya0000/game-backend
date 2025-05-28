@@ -1108,7 +1108,7 @@ router.get('/all-users-data', async (req, res) => {
   }
 });
 
-//====================how many coupons a user have redeem======== 
+//==================== how many coupons a user have redeem ======== 
 // Get user's coupon redemption history
 router.get('/coupons/:userId/', async (req, res) => {
   try {
@@ -1277,6 +1277,148 @@ router.get('/transactions/:userId', async (req, res) => {
   }
 });
 
+//================= Get user betting statistics ==========
+router.get('/user-bet-stats/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    // Validate input
+    if (!userId || isNaN(userId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid user ID"
+      });
+    }
+
+    // Query to get user's betting statistics
+    const statsQuery = `
+            SELECT 
+                COUNT(*) as total_bets,
+                SUM(amount) as total_bet_amount,
+                SUM(CASE 
+                    WHEN (bet_type = 'number' AND CAST(bet_value AS SIGNED) = r.result_number) OR
+                         (bet_type = 'color' AND bet_value = r.result_color) OR
+                         (bet_type = 'size' AND bet_value = r.result_size)
+                    THEN amount * 1.9
+                    ELSE 0  
+                END) as total_winnings,
+                COUNT(CASE 
+                    WHEN (bet_type = 'number' AND CAST(bet_value AS SIGNED) = r.result_number) OR
+                         (bet_type = 'color' AND bet_value = r.result_color) OR
+                         (bet_type = 'size' AND bet_value = r.result_size)
+                    THEN 1 
+                END) as total_wins,
+                SUM(CASE 
+                    WHEN bet_type = 'color' THEN amount
+                    ELSE 0 
+                END) as color_bets_amount,
+                SUM(CASE 
+                    WHEN bet_type = 'number' THEN amount
+                    ELSE 0 
+                END) as number_bets_amount,
+                SUM(CASE 
+                    WHEN bet_type = 'size' THEN amount
+                    ELSE 0 
+                END) as size_bets_amount
+            FROM bets b
+            LEFT JOIN result r ON b.period_number = r.period_number
+            WHERE b.user_id = ? AND b.status = 'processed'
+            GROUP BY b.user_id`;
+
+    // Get recent bets
+    const recentBetsQuery = `
+            SELECT 
+                b.period_number,
+                b.bet_type,
+                b.bet_value,
+                b.amount,
+                b.placed_at,
+                CASE 
+                    WHEN (bet_type = 'number' AND CAST(bet_value AS SIGNED) = r.result_number) OR
+                         (bet_type = 'color' AND bet_value = r.result_color) OR
+                         (bet_type = 'size' AND bet_value = r.result_size)
+                    THEN amount * 1.9
+                    ELSE 0 
+                END as winnings,
+                CASE 
+                    WHEN (bet_type = 'number' AND CAST(bet_value AS SIGNED) = r.result_number) OR
+                         (bet_type = 'color' AND bet_value = r.result_color) OR
+                         (bet_type = 'size' AND bet_value = r.result_size)
+                    THEN 'won'
+                    ELSE 'lost'
+                END as result
+            FROM bets b
+            LEFT JOIN result r ON b.period_number = r.period_number
+            WHERE b.user_id = ? AND b.status = 'processed'
+            ORDER BY b.placed_at DESC
+            LIMIT 10`;
+
+    // Execute both queries using connection instead of pool
+    const [stats, recentBets] = await Promise.all([
+      new Promise((resolve, reject) => {
+        connection.query(statsQuery, [userId], (err, results) => {
+          if (err) reject(err);
+          resolve(results[0]);
+        });
+      }),
+      new Promise((resolve, reject) => {
+        connection.query(recentBetsQuery, [userId], (err, results) => {
+          if (err) reject(err);
+          resolve(results);
+        });
+      })
+    ]);
+
+    if (!stats) {
+      return res.status(404).json({
+        success: false,
+        message: "No betting history found for this user"
+      });
+    }
+
+    const profitLoss = parseFloat(stats.total_winnings || 0) - parseFloat(stats.total_bet_amount || 0);
+
+    res.json({
+      success: true,
+      statistics: {
+        total_bets: parseInt(stats.total_bets || 0),
+        total_bet_amount: parseFloat(stats.total_bet_amount || 0),
+        total_winnings: parseFloat(stats.total_winnings || 0),
+        total_wins: parseInt(stats.total_wins || 0),
+        win_rate: stats.total_bets ? ((stats.total_wins / stats.total_bets) * 100).toFixed(2) : "0.00",
+        profit_loss: profitLoss,
+        bet_distribution: {
+          color: parseFloat(stats.color_bets_amount || 0),
+          number: parseFloat(stats.number_bets_amount || 0),
+          size: parseFloat(stats.size_bets_amount || 0)
+        }
+      },
+      recent_bets: recentBets.map(bet => ({
+        period_number: bet.period_number,
+        bet_type: bet.bet_type,
+        bet_value: bet.bet_value,
+        amount: parseFloat(bet.amount),
+        winnings: parseFloat(bet.winnings),
+        result: bet.result,
+        placed_at: bet.placed_at
+      }))
+    });
+
+  } catch (error) {
+    console.error('Error fetching user betting statistics:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching betting statistics',
+      error: error.message
+    });
+  }
+});
 
 
 module.exports = router;
+
+
+
+
+
+
