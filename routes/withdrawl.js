@@ -1,134 +1,436 @@
 const express = require('express');
 const connection = require('../config/db'); // Ensure database connection is configured
 const router = express.Router();
+// currency
+// : 
+// "btc"
+// cryptoname
+// : 
+// "usdt"
+// network
+// : 
+// "erc20"
 
-// Create a new withdrawal entry and deduct balance from the wallet
+// Create a new withdrawal request
 router.post('/withdrawl', async (req, res) => {
-  console.log("api called");
-  const { userId, balance, cryptoname, status } = req.body;
-  console.log(userId, balance, cryptoname, status);
+  const { type, bankname, amount, currency, balance, userId, walletAddress, cryptoname,network } = req.body;
 
-  if (!userId || !cryptoname || !balance || balance <= 0) {
-    console.log("I am in");
-    return res.status(400).json({ error: 'Invalid input. userId, cryptoname, and a positive balance are required.' });
+  // First check userId
+  if (!userId) {
+    return res.status(400).json({
+      success: false,
+      message: 'userId is required'
+    });
   }
-  console.log("I am here");
+
+  // Validate based on type
+  if (type === 'bank') {
+    if (!balance || !bankname || !currency) {
+      return res.status(400).json({
+        success: false,
+        message: 'All fields are required'
+      });
+    }
+  } else if (type === 'crypto') {
+    if (!amount || !cryptoname || !walletAddress || !network) {
+      return res.status(400).json({
+        success: false,
+        message: 'All fields are required'
+      });
+    }
+  } else {
+    return res.status(400).json({
+      success: false,
+      message: 'Invalid withdrawal type. Must be either "bank" or "crypto"'
+    });
+  }
+
+  // Set the amount and currency/cryptoname to check in wallet
+  const amountToDeduct = type === 'bank' ? balance : amount;
+  const currencyToCheck = type === 'bank' ? currency : cryptoname;
 
   try {
-    // Start a transaction to ensure atomicity
-    connection.beginTransaction((err, results) => {
+    // Start a transaction
+    connection.beginTransaction(err => {
       if (err) {
-        console.error('Transaction error:', err);
-        return res.status(500).json({ error: 'Transaction initialization failed' });
-      } else {
-        console.log(results);
+        return res.status(500).json({
+          success: false,
+          message: 'Transaction initialization failed'
+        });
       }
 
-
-      // Deduct the balance from the wallet
-      const deductBalanceQuery = `
-        UPDATE wallet
-        SET balance = balance - ?
-        WHERE userId = ? AND cryptoname = ? 
+      // Check wallet balance
+      const checkBalanceQuery = `
+        SELECT balance 
+        FROM wallet 
+        WHERE userId = ? AND cryptoname = ?
       `;
-      const response = connection.query(
-        deductBalanceQuery,
-        [balance, userId, cryptoname, balance],
-        (err, results) => {
+
+      connection.query(checkBalanceQuery, [userId, currencyToCheck], (err, results) => {
+        if (err) {
+          return connection.rollback(() => {
+            res.status(500).json({
+              success: false,
+              message: 'Error checking wallet balance'
+            });
+          });
+        }
+
+        if (results.length === 0 || results[0].balance < amountToDeduct) {
+          return connection.rollback(() => {
+            res.status(400).json({
+              success: false,
+              message: 'Insufficient balance'
+            });
+          });
+        }
+
+        // Deduct from wallet
+        const deductBalanceQuery = `
+          UPDATE wallet 
+          SET balance = balance - ? 
+          WHERE userId = ? AND cryptoname = ?
+        `;
+
+        connection.query(deductBalanceQuery, [amountToDeduct, userId, currencyToCheck], (err) => {
           if (err) {
-            console.error('Database error during balance deduction:', err);
             return connection.rollback(() => {
-              res.status(500).json({ error: 'Error updating wallet balance' });
+              res.status(500).json({
+                success: false,
+                message: 'Error deducting balance from wallet'
+              });
             });
           }
 
+          // Insert into withdrawl table based on type
+          let insertQuery;
+          let insertParams;
 
-          if (results.affectedRows === 0) {
-            return connection.rollback(() => {
-              res.status(400).json({ error: 'Insufficient balance or wallet entry not found' });
-            });
+          if (type === 'bank') {
+            insertQuery = `
+              INSERT INTO withdrawl (
+                userId, balance, cryptoname, bankName,
+                status, createdOn
+              ) VALUES (?, ?, ?, ?, ?, NOW())
+            `;
+            insertParams = [userId, balance, currency, bankname,0];
+          } else {
+            insertQuery = `
+              INSERT INTO withdrawl (
+                userId, balance, cryptoname, walletAddress,
+                status, createdOn
+              ) VALUES (?, ?, ?, ?, ?, NOW())
+            `;
+            insertParams = [userId, amount, cryptoname, walletAddress,0];
           }
 
-          // Insert the withdrawal entry
-          const createWithdrawalQuery = `
-            INSERT INTO withdrawl (userId, balance, cryptoname, status)
-            VALUES (?, ?, ?, ?)
-          `;
-          connection.query(
-            createWithdrawalQuery,
-            [userId, balance, cryptoname, status || 0],
-            (err, withdrawalResults) => {
-              if (err) {
-                console.error('Database error during withdrawal creation:', err);
-                return connection.rollback(() => {
-                  res.status(500).json({ error: 'Error creating withdrawal entry' });
-                });
-              }
-
-              // Commit the transaction
-              connection.commit((err) => {
-                if (err) {
-                  console.error('Transaction commit error:', err);
-                  return connection.rollback(() => {
-                    res.status(500).json({ error: 'Transaction commit failed' });
-                  });
-                }
-
-                res.status(201).json({
-                  message: 'Withdrawal entry created successfully and balance deducted',
-                  id: withdrawalResults.insertId,
+          connection.query(insertQuery, insertParams, (err, result) => {
+            if (err) {
+              return connection.rollback(() => {
+                res.status(500).json({
+                  success: false,
+                  message: 'Error creating withdrawal entry'
                 });
               });
             }
-          );
-        }
-      );
+
+            // Commit the transaction
+            connection.commit(err => {
+              if (err) {
+                return connection.rollback(() => {
+                  res.status(500).json({
+                    success: false,
+                    message: 'Error committing transaction'
+                  });
+                });
+              }
+
+              res.json({
+                success: true,
+                message: 'Withdrawal request created successfully',
+                data: {
+                  withdrawalId: result.insertId,
+                  type,
+                  amount: amountToDeduct,
+                  currency: currencyToCheck,
+                  status: 'pending',
+                  ...(type === 'bank' 
+                    ? { bankname } 
+                    : { walletAddress })
+                }
+              });
+            });
+          });
+        });
+      });
     });
   } catch (error) {
-    console.error('Error creating withdrawal entry:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('Error processing withdrawal request:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error',
+      error: error.message
+    });
   }
 });
 
-
-// Get all withdrawal entries with username from the user table
-
-
-router.get('/withdrawl', async (req, res) => {
+// Get all withdrawal entries with user and bank details based on status
+router.get('/withdrawl-requests/:status', async (req, res) => {
   try {
-    const query = 'SELECT * FROM withdrawl';
-    connection.query(query, (err, results) => {
-      if (err) {
-        console.error('Database error:', err);
-        return res.status(500).json({ error: 'Database query error' });
+    const withdrawalStatus = Number(req.params.status);
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = 20;
+    const offset = (page - 1) * limit;
+
+    // Validate status parameter
+    if (![0, 1, 2, 3].includes(Number(withdrawalStatus))) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid status parameter. Status must be 0 (pending), 1 (approved), 2 (rejected), or 3 (all)'
+      });
+    }
+
+    // Get total count first
+    const countQuery = `
+      SELECT COUNT(*) as total
+      FROM withdrawl w
+      WHERE ${withdrawalStatus === 3 ? '1=1' : 'w.status = ?'}
+    `;
+
+    connection.query(
+      countQuery,
+      withdrawalStatus === 3 ? [] : [withdrawalStatus],
+      (countErr, countResults) => {
+        if (countErr) {
+          console.error('Error getting total count:', countErr);
+          return res.status(500).json({
+            success: false,
+            message: 'Failed to fetch total records count'
+          });
+        }
+
+        const totalRecords = countResults[0].total;
+        const totalPages = Math.ceil(totalRecords / limit);
+
+        // Fetch current page data plus one extra record to determine if next page exists
+        const query = `
+          SELECT 
+            w.id,
+            w.createdOn,
+            w.balance,
+            w.cryptoname,
+            w.walletAddress,
+            w.networkType,
+            w.bankName,
+            w.status as withdrawalStatus,
+            u.username,
+            u.email,
+            u.name,
+            u.phone,
+            ba.accountName,
+            ba.accountNumber,
+            ba.ifscCode,
+            ba.branch,
+            ba.status as bankAccountStatus
+          FROM withdrawl w
+          LEFT JOIN users u ON w.userId = u.id
+          LEFT JOIN bankaccount ba ON w.bankName = ba.id
+          WHERE ${withdrawalStatus === 3 ? '1=1' : 'w.status = ?'}
+          ORDER BY w.createdOn DESC
+          LIMIT ? OFFSET ?
+        `;
+
+        const queryParams = withdrawalStatus === 3 
+          ? [limit + 1, offset]
+          : [withdrawalStatus, limit + 1, offset];
+
+        connection.query(query, queryParams, (err, results) => {
+          if (err) {
+            console.error('Database error:', err);
+            return res.status(500).json({ 
+              success: false,
+              message: 'Failed to fetch withdrawal records'
+            });
+          }
+
+          // Check if there's a next page
+          const hasNextPage = results.length > limit;
+          // Remove the extra record we fetched
+          const paginatedResults = results.slice(0, limit);
+
+          const statusText = {
+            0: 'Pending',
+            1: 'Approved',
+            2: 'Rejected',
+            3: 'All'
+          }[withdrawalStatus];
+
+          const formattedResults = paginatedResults.map(item => ({
+            withdrawalId: item.id,
+            amount: item.balance,
+            cryptoname: item.cryptoname,
+            requestDate: item.createdOn,
+            withdrawalStatus: {
+              code: item.withdrawalStatus,
+              status: {
+                0: 'Pending',
+                1: 'Approved',
+                2: 'Rejected'
+              }[item.withdrawalStatus]
+            },
+            user: {
+              userId: item.userId,
+              username: item.username,
+              name: item.name,
+              email: item.email,
+              phone: item.phone
+            },
+            withdrawalDetails: item.walletAddress ? {
+              walletAddress: item.walletAddress,
+              networkType: item.networkType
+            } : {
+              accountName: item.accountName,
+              accountNumber: item.accountNumber,
+              ifscCode: item.ifscCode,
+              branch: item.branch,
+              bankAccountStatus: item.bankAccountStatus
+            }
+          }));
+
+          res.json({
+            success: true,
+            message: `${statusText} withdrawal records fetched successfully`,
+            data: formattedResults,
+            pagination: {
+              currentPage: page,
+              totalPages: totalPages,
+              totalRecords: totalRecords,
+              hasNextPage: hasNextPage,
+              nextPage: hasNextPage ? page + 1 : null
+            }
+          });
+        });
       }
-      res.json(results);
-    });
+    );
   } catch (error) {
     console.error('Error fetching withdrawal entries:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ 
+      success: false,
+      message: 'Something went wrong while fetching withdrawal records'
+    });
   }
 });
 
-// Get a single withdrawal entry by ID
-router.get('/withdrawl/:id', async (req, res) => {
+// Get a single withdrawal entry by ID with user and bank details
+router.get('/withdrawl-request/:id/:status?', async (req, res) => {
   const withdrawlId = req.params.id;
+  const withdrawalStatus = req.params.status;
 
   try {
-    const query = 'SELECT * FROM withdrawl WHERE id = ?';
-    connection.query(query, [withdrawlId], (err, results) => {
+    let query = `
+      SELECT 
+        w.id,
+        w.createdOn,
+        w.balance,
+        w.cryptoname,
+        w.walletAddress,
+        w.networkType,
+        w.bankName,
+        w.status as withdrawalStatus,
+        u.username,
+        u.email,
+        u.name,
+        u.phone,
+        ba.accountName,
+        ba.accountNumber,
+        ba.ifscCode,
+        ba.branch,
+        ba.status as bankAccountStatus
+      FROM withdrawl w
+      LEFT JOIN users u ON w.userId = u.id
+      LEFT JOIN bankaccount ba ON w.bankName = ba.id
+      WHERE w.id = ?
+    `;
+
+    const queryParams = [withdrawlId];
+
+    // Add status condition if provided
+    if (withdrawalStatus !== undefined) {
+      if (![0, 1, 2, 3].includes(Number(withdrawalStatus))) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid status parameter. Status must be 0 (pending), 1 (approved), or 2 (rejected)'
+        });
+      }
+      query += ' AND w.status = ?';
+      queryParams.push(withdrawalStatus);
+    }
+
+    connection.query(query, queryParams, (err, results) => {
       if (err) {
         console.error('Database error:', err);
-        return res.status(500).json({ error: 'Database query error' });
+        return res.status(500).json({ 
+          success: false,
+          message: 'Failed to fetch withdrawal record'
+        });
       }
+
       if (results.length === 0) {
-        return res.status(404).json({ error: 'Withdrawal entry not found' });
+        return res.status(404).json({ 
+          success: false,
+          message: withdrawalStatus !== undefined 
+            ? `Withdrawal record not found with status ${withdrawalStatus}` 
+            : 'Withdrawal record not found'
+        });
       }
-      res.json(results[0]);
+
+      const item = results[0];
+      const statusText = {
+        0: 'Pending',
+        1: 'Approved',
+        2: 'Rejected'
+      }[item.withdrawalStatus];
+
+      const formattedResult = {
+        withdrawalId: item.id,
+        amount: item.balance,
+        cryptoname: item.cryptoname,
+        requestDate: item.createdOn,
+        withdrawalStatus: {
+          code: item.withdrawalStatus,
+          status: statusText
+        },
+        user: {
+          userId: item.userId,
+          username: item.username,
+          name: item.name,
+          email: item.email,
+          phone: item.phone
+        },
+        withdrawalDetails: item.walletAddress ? {
+          walletAddress: item.walletAddress,
+          networkType: item.networkType
+        } : {
+          accountName: item.accountName,
+          accountNumber: item.accountNumber,
+          ifscCode: item.ifscCode,
+          branch: item.branch,
+          bankAccountStatus: item.bankAccountStatus
+        }
+      };
+
+      res.json({
+        success: true,
+        message: 'Withdrawal record fetched successfully',
+        data: formattedResult
+      });
     });
   } catch (error) {
     console.error('Error fetching withdrawal entry:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ 
+      success: false,
+      message: 'Something went wrong while fetching the withdrawal record'
+    });
   }
 });
 
