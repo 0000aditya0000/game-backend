@@ -631,13 +631,17 @@ router.put('/withdrawal/approve/:id', async (req, res) => {
 
           connection.query(updateQuery, [numericStatus, withdrawalId], (err) => {
             if (err) {
+              console.log('error in updateWithdrawalStatus',err)
               return connection.rollback(() => {
                 res.status(500).json({
                   success: false,
-                  message: "Failed to update withdrawal status"
+                  message: "Failed to update withdrawal status",
+                  error: err
                 });
               });
             }
+
+            
 
             connection.commit(err => {
               if (err) {

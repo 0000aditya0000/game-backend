@@ -452,6 +452,87 @@ router.put(
 );
 
 
+// upload aadhar front and back and pan image for kyc
+
+router.put(
+  "/:id/kyc",
+  upload.fields([
+    { name: "aadharFront", maxCount: 1 },
+    { name: "aadharBack", maxCount: 1 },
+    { name: "panImage", maxCount: 1 },
+  ]),
+  async (req, res) => {
+    const userId = req.params.id;
+    const { kycstatus = 0 } = req.body;
+
+    console.log("Files received in request:", req.files);
+
+    const aadharFront = req.files?.aadharFront?.[0]?.filename || null;
+    const aadharBack = req.files?.aadharBack?.[0]?.filename || null;
+    const pan = req.files?.panImage?.[0]?.filename || null;
+
+    if (!aadharFront && !aadharBack && !pan) {
+      return res.status(400).json({
+        error: "At least one image (Aadhar Front, Back, or PAN) is required",
+      });
+    }
+
+    try {
+      const fieldsToUpdate = [];
+      const values = [];
+
+      if (aadharFront) {
+        fieldsToUpdate.push("aadhar_front = ?");
+        values.push(aadharFront);
+      }
+      if (aadharBack) {
+        fieldsToUpdate.push("aadhar_back = ?");
+        values.push(aadharBack);
+      }
+      if (pan) {
+        fieldsToUpdate.push("pan = ?");
+        values.push(pan);
+      }
+
+      fieldsToUpdate.push("kycstatus = ?");
+      values.push(kycstatus);
+      values.push(userId);
+
+      const query = `
+        UPDATE users 
+        SET ${fieldsToUpdate.join(", ")} 
+        WHERE id = ?
+      `;
+
+      console.log("Generated Query:", query);
+      console.log("Query Values:", values);
+
+      connection.query(query, values, (err, results) => {
+        if (err) {
+          console.error("Database query error:", err);
+          return res.status(500).json({ error: "Database query error" });
+        }
+
+        if (results.affectedRows === 0) {
+          return res.status(404).json({ error: "User not found" });
+        }
+
+        res.json({
+          message: "KYC details updated successfully",
+          aadharFront: aadharFront || "No change",
+          aadharBack: aadharBack || "No change",
+          pan: pan || "No change",
+          kycstatus,
+        });
+      });
+    } catch (error) {
+      console.error("Error updating KYC details:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  }
+);
+
+
 
 
 // add balance for existing balance for a specific cryptoname and userId
