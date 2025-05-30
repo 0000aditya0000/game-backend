@@ -69,16 +69,132 @@ router.post('/addnew', async (req, res) => {
   }
 });
 
-// Retrieve all bank accounts
+// Retrieve all bank accounts with pagination and status filter
 router.get('/getall', async (req, res) => {
   try {
-    const query = "SELECT * FROM bankaccount";
-    connection.query(query, (err, results) => {
-      if (err) return res.status(500).json({ error: 'Database query error' });
-      res.json(results);
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const offset = (page - 1) * limit;
+    const status = req.query.status; // Optional status filter
+
+    // Base queries with proper table aliases
+    let query = `
+      SELECT 
+        ba.id,
+        ba.userId,
+        ba.status,
+        ba.accountname,
+        ba.accountnumber,
+        ba.ifsccode,
+        ba.branch,
+        ba.usdt,
+        ba.network,
+        u.name,
+        u.username,
+        u.email,
+        u.phone,
+        u.kycstatus
+      FROM bankaccount ba
+      LEFT JOIN users u ON ba.userId = u.id
+    `;
+    
+    let countQuery = `
+      SELECT COUNT(*) as total 
+      FROM bankaccount ba
+    `;
+
+    let queryParams = [];
+    let whereClause = '';
+
+    // Add status filter if provided
+    if (status !== undefined) {
+      whereClause = ' WHERE ba.status = ?';
+      queryParams.push(parseInt(status));
+    }
+
+    countQuery += whereClause;
+    query += whereClause;
+
+    // Add pagination
+    query += " ORDER BY ba.id DESC LIMIT ? OFFSET ?";
+    queryParams.push(limit, offset);
+
+    // Get total count
+    connection.query(countQuery, queryParams.slice(0, -2), (countErr, countResults) => {
+      if (countErr) {
+        console.error('Count Query Error:', countErr);
+        return res.status(500).json({ 
+          error: 'Database query error', 
+          details: countErr.message 
+        });
+      }
+
+      const totalRecords = countResults[0].total;
+      const totalPages = Math.ceil(totalRecords / limit);
+
+      // Get paginated results
+      connection.query(query, queryParams, (err, results) => {
+        if (err) {
+          console.error('Data Query Error:', err);
+          return res.status(500).json({ 
+            error: 'Database query error', 
+            details: err.message 
+          });
+        }
+        
+        // Format the response data
+        const formattedData = results.map(record => {
+          const baseData = {
+            id: record.id,
+            userId: record.userId,
+            status: record.status,
+            user: {
+              name: record.name || null,
+              username: record.username || null,
+              email: record.email || null,
+              mobile: record.mobile || null,
+              kyc_status: record.kyc_status || null
+            }
+          };
+
+          // Add either bank account details or USDT details
+          if (record.accountnumber) {
+            baseData.accountType = 'bank';
+            baseData.bankDetails = {
+              accountName: record.accountname || null,
+              accountNumber: record.accountnumber || null,
+              ifscCode: record.ifsccode || null,
+              branch: record.branch || null
+            };
+          } else if (record.usdt) {
+            baseData.accountType = 'crypto';
+            baseData.cryptoDetails = {
+              usdtAddress: record.usdt || null,
+              network: record.network || null
+            };
+          }
+
+          return baseData;
+        });
+
+        res.json({
+          success: true,
+          data: formattedData,
+          pagination: {
+            currentPage: page,
+            totalPages: totalPages,
+            totalRecords: totalRecords,
+            limit: limit
+          }
+        });
+      });
     });
   } catch (error) {
-    res.status(500).json({ error: 'Error fetching bank accounts' });
+    console.error('Server Error:', error);
+    res.status(500).json({ 
+      error: 'Error fetching bank accounts',
+      details: error.message 
+    });
   }
 });
 
@@ -212,6 +328,49 @@ router.delete('/delete/:id', async (req, res) => {
     });
   } catch (error) {
     res.status(500).json({ error: 'Error deleting bank account' });
+  }
+});
+
+// Simple status update for bank account
+router.put('/update-status/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+
+    if (status === undefined) {
+      return res.status(400).json({
+        success: false,
+        message: 'Status is required'
+      });
+    }
+
+    const updateQuery = "UPDATE bankaccount SET status = ? WHERE id = ?";
+    
+    connection.query(updateQuery, [status, id], (err, results) => {
+      if (err) {
+        return res.status(500).json({
+          success: false,
+          message: 'Error updating status'
+        });
+      }
+
+      if (results.affectedRows === 0) {
+        return res.status(404).json({
+          success: false,
+          message: 'Bank account not found'
+        });
+      }
+
+      res.json({
+        success: true,
+        message: `Status updated successfully`
+      });
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Server error'
+    });
   }
 });
 
