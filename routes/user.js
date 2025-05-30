@@ -1620,7 +1620,7 @@ router.get('/pending-kyc', async (req, res) => {
           error: countErr.message
         });
       }
-      
+
       const totalUsers = countResult[0].total;
       const totalPages = Math.ceil(totalUsers / limit);
 
@@ -1686,6 +1686,119 @@ router.get('/pending-kyc', async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Internal server error",
+      error: error.message
+    });
+  }
+});
+
+
+
+//================ Get User Game Transactions =================
+
+router.get('/game-transactions/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 20;
+    const offset = (page - 1) * limit;
+
+    // Query to check if user exists
+    const userQuery = "SELECT id, username FROM users WHERE id = ?";
+    connection.query(userQuery, [userId], (userErr, userResult) => {
+      if (userErr) {
+        console.error('User query error:', userErr);
+        return res.status(500).json({
+          success: false,
+          message: "Error checking user",
+          error: userErr.message
+        });
+      }
+
+      const user = userResult[0];
+      if (!user) {
+        return res.status(404).json({
+          success: false,
+          message: "User not found"
+        });
+      }
+
+      // Query to get total transactions
+      const countQuery = `
+        SELECT COUNT(*) as total 
+        FROM api_turnover 
+        WHERE login = ?
+      `;
+
+      connection.query(countQuery, [userId], (countErr, countResult) => {
+        if (countErr) {
+          console.error('Count query error:', countErr);
+          return res.status(500).json({
+            success: false,
+            message: "Error counting transactions",
+            error: countErr.message
+          });
+        }
+
+        const totalRecords = countResult[0].total;
+        const totalPages = Math.ceil(totalRecords / limit);
+
+        // Query to get paginated transactions
+        const transactionQuery = `
+          SELECT 
+            id as transaction_id,
+            cmd as transaction_type,
+            sessionId,
+            bet as bet_amount,
+            date as bet_date,
+            gameId,
+            win as winning_amount,
+            created_at,
+            CASE
+              WHEN win IS NULL THEN 'pending'
+              WHEN win > 0 THEN 'won'
+              ELSE 'lost'
+            END as status
+          FROM api_turnover 
+          WHERE login = ?
+          ORDER BY created_at DESC
+          LIMIT ? OFFSET ?
+        `;
+
+        connection.query(transactionQuery, [userId, limit, offset], (txErr, txResult) => {
+          if (txErr) {
+            console.error('Transaction query error:', txErr);
+            return res.status(500).json({
+              success: false,
+              message: "Error fetching transactions",
+              error: txErr.message
+            });
+          }
+            // Format transaction amounts because they might be strings
+          const transactions = txResult.map(tx => ({
+            ...tx,
+            bet_amount: parseFloat(tx.bet_amount || 0),
+            winning_amount: parseFloat(tx.winning_amount || 0)
+          }));
+
+          res.json({
+            success: true,
+            message: "Game transactions retrieved successfully",
+            pagination: {
+              total_records: totalRecords,
+              total_pages: totalPages,
+              current_page: page,
+              limit: limit
+            },
+            transactions
+          });
+        });
+      });
+    });
+  } catch (error) {
+    console.error('Unexpected error:', error);
+    res.status(500).json({
+      success: false,
+      message: "Unexpected server error",
       error: error.message
     });
   }
