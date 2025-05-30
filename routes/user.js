@@ -1515,7 +1515,9 @@ router.put('/kyc/approve/:userId', async (req, res) => {
     const userId = req.params.userId;
     const { status } = req.body; // status should be 0 (pending), 1 (approved), or 2 (rejected)
 
-    if (![0, 1, 2].includes(status)) {
+    console.log('Received request:', { userId, status }); // Debug log
+
+    if (![0, 1, 2].includes(Number(status))) {
       return res.status(400).json({
         success: false,
         message: "Invalid status value. Use 0 for pending, 1 for approved, 2 for rejected"
@@ -1524,72 +1526,87 @@ router.put('/kyc/approve/:userId', async (req, res) => {
 
     // First check if user has uploaded KYC documents
     const checkQuery = `
-            SELECT aadhar, pan, kycstatus 
-            FROM users 
-            WHERE id = ?
-        `;
+      SELECT aadhar_front,aadhar_back, pan, kycstatus 
+      FROM users 
+      WHERE id = ?
+    `;
 
-    connection.query(checkQuery, [userId], (err, results) => {
-      if (err) {
-        return res.status(500).json({
-          success: false,
-          message: "Database error"
-        });
-      }
-
-      if (results.length === 0) {
-        return res.status(404).json({
-          success: false,
-          message: "User not found"
-        });
-      }
-
-      const user = results[0];
-
-      // Check if documents are uploaded
-      if (!user.aadhar && !user.pan) {
-        return res.status(400).json({
-          success: false,
-          message: "Cannot process KYC. No documents uploaded",
-          missing_documents: {
-            aadhar: !user.aadhar,
-            pan: !user.pan
+    // Convert to Promise-based query for better error handling
+    const checkUser = () => {
+      return new Promise((resolve, reject) => {
+        connection.query(checkQuery, [userId], (err, results) => {
+          if (err) {
+            console.error('Database error in checkQuery:', err); // Debug log
+            reject(err);
+            return;
           }
-        });
-      }
-
-      // Update KYC status
-      const updateQuery = `
-                UPDATE users 
-                SET kycstatus = ?
-                WHERE id = ?
-            `;
-
-      connection.query(updateQuery, [status, userId], (err, result) => {
-        if (err) {
-          return res.status(500).json({
-            success: false,
-            message: "Error updating KYC status"
-          });
-        }
-
-        res.json({
-          success: true,
-          message: `KYC ${status === 1 ? 'approved' : status === 2 ? 'rejected' : 'set to pending'} successfully`,
-          data: {
-            user_id: userId,
-            new_status: status,
-            status_text: status === 1 ? 'Approved' : status === 2 ? 'Rejected' : 'Pending',
-            documents: {
-              aadhar: user.aadhar ? "Submitted" : "Not submitted",
-              pan: user.pan ? "Submitted" : "Not submitted"
-            }
-          }
+          resolve(results);
         });
       });
+    };
+
+    const results = await checkUser();
+
+    if (!results || results.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found"
+      });
+    }
+
+    const user = results[0];
+
+    // Check if documents are uploaded
+    if (!user.aadhar && !user.pan) {
+      return res.status(400).json({
+        success: false,
+        message: "Cannot process KYC. No documents uploaded",
+        missing_documents: {
+          aadhar: !user.aadhar,
+          pan: !user.pan
+        }
+      });
+    }
+
+    // Update KYC status
+    const updateQuery = `
+      UPDATE users 
+      SET kycstatus = ?
+      WHERE id = ?
+    `;
+
+    // Convert update query to Promise
+    const updateStatus = () => {
+      return new Promise((resolve, reject) => {
+        connection.query(updateQuery, [status, userId], (err, result) => {
+          if (err) {
+            console.error('Database error in updateQuery:', err); // Debug log
+            reject(err);
+            return;
+          }
+          resolve(result);
+        });
+      });
+    };
+
+    const updateResult = await updateStatus();
+
+    res.json({
+      success: true,
+      message: `KYC ${status === 1 ? 'approved' : status === 2 ? 'rejected' : 'set to pending'} successfully`,
+      data: {
+        user_id: userId,
+        new_status: status,
+        status_text: status === 1 ? 'Approved' : status === 2 ? 'Rejected' : 'Pending',
+        documents: {
+          aadhar: user.aadhar ? "Submitted" : "Not submitted",
+          pan: user.pan ? "Submitted" : "Not submitted"
+        }
+      }
     });
+
   } catch (error) {
-    console.error('Error processing KYC:', error);
+    console.error('Error processing KYC:', error); // Debug log
     res.status(500).json({
       success: false,
       message: "Internal server error",
@@ -1603,20 +1620,39 @@ router.put('/kyc/approve/:userId', async (req, res) => {
 router.get('/pending-kyc', async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
+    const status = parseInt(req.query.status); // Get status from query params
     const limit = 20;
     const offset = (page - 1) * limit;
 
-    // Query to get total pending users
+    // Get server URL from request object
+    const serverUrl = `${req.protocol}://${req.get('host')}`;
+
+    // Validate status parameter
+    if (![0, 1, 2, 3].includes(status)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid status value. Use 0 for pending, 1 for approved, 2 for rejected, 3 for all"
+      });
+    }
+
+    // Build WHERE clause based on status
+    const whereClause = status === 3 ? '' : 'WHERE kycstatus = ?';
+
+    // Query to get total users based on status
     const countQuery = `
-      SELECT COUNT(*) as total FROM users WHERE kycstatus = 0
+      SELECT COUNT(*) as total 
+      FROM users 
+      ${whereClause}
     `;
 
-    connection.query(countQuery, (countErr, countResult) => {
+    const countParams = status === 3 ? [] : [status];
+
+    connection.query(countQuery, countParams, (countErr, countResult) => {
       if (countErr) {
         console.error('Count query error:', countErr);
         return res.status(500).json({
           success: false,
-          message: "Error counting pending KYC users",
+          message: "Error counting KYC users",
           error: countErr.message
         });
       }
@@ -1624,7 +1660,7 @@ router.get('/pending-kyc', async (req, res) => {
       const totalUsers = countResult[0].total;
       const totalPages = Math.ceil(totalUsers / limit);
 
-      // Now fetch paginated data
+      // Now fetch paginated data with updated fields
       const dataQuery = `
         SELECT 
           id,
@@ -1632,33 +1668,47 @@ router.get('/pending-kyc', async (req, res) => {
           name,
           email,
           phone,
-          aadhar,
+          aadhar_front,
+          aadhar_back,
           pan,
           kycstatus,
           my_referral_code
         FROM users 
-        WHERE kycstatus = 0
+        ${whereClause}
         ORDER BY id DESC
         LIMIT ? OFFSET ?
       `;
 
-      connection.query(dataQuery, [limit, offset], (err, results) => {
+      const queryParams = status === 3 
+        ? [limit, offset] 
+        : [status, limit, offset];
+
+      connection.query(dataQuery, queryParams, (err, results) => {
         if (err) {
           console.error('Data fetch error:', err);
           return res.status(500).json({
             success: false,
-            message: "Error fetching pending KYC users",
+            message: "Error fetching KYC users",
             error: err.message
           });
         }
 
+        const statusText = {
+          0: 'Pending',
+          1: 'Approved',
+          2: 'Rejected',
+          3: 'All'
+        };
 
         res.json({
           success: true,
-          message: "Pending KYC users retrieved successfully",
-          total_pending: totalUsers,
+          message: `${statusText[status]} KYC users retrieved successfully`,
+          total_items: totalUsers,
           total_pages: totalPages,
           current_page: page,
+          items_per_page: limit,
+          status: status,
+          status_text: statusText[status],
           data: results.map(user => ({
             user_id: user.id,
             username: user.username,
@@ -1666,15 +1716,14 @@ router.get('/pending-kyc', async (req, res) => {
             email: user.email,
             phone: user.phone,
             referral_code: user.my_referral_code,
+            kyc_status: {
+              code: user.kycstatus,
+              text: statusText[user.kycstatus]
+            },
             documents: {
-              aadhar: {
-                submitted: !!user.aadhar,
-                file_name: user.aadhar || null
-              },
-              pan: {
-                submitted: !!user.pan,
-                file_name: user.pan || null
-              }
+              aadharfront: user.aadhar_front ? `${serverUrl}/uploads/${user.aadhar_front}` : null,
+              aadharback: user.aadhar_back ? `${serverUrl}/uploads/${user.aadhar_back}` : null,
+              pan: user.pan ? `${serverUrl}/uploads/${user.pan}` : null
             }
           }))
         });
@@ -1682,7 +1731,7 @@ router.get('/pending-kyc', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error fetching pending KYC users:', error);
+    console.error('Error fetching KYC users:', error);
     res.status(500).json({
       success: false,
       message: "Internal server error",
