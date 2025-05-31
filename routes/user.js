@@ -155,10 +155,15 @@ router.get("/referrals/:userId", async (req, res) => {
 router.post('/login', async (req, res) => {
   const { email, password } = req.body;
 
+  // Check if both email/username value and password are provided
+  if (!email || !password) {
+    return res.status(400).json({ error: 'Email/Username and password are required' });
+  }
+
   try {
-    // Query to find the user by email
-    const query = "SELECT * FROM users WHERE email = ?";
-    connection.query(query, [email], async (err, results) => {
+    // Query to find the user by matching the provided value against either email OR username
+    const query = "SELECT * FROM users WHERE email = ? OR username = ?";
+    connection.query(query, [email, email], async (err, results) => {
       if (err) return res.status(500).json({ error: 'Database query error' });
       if (results.length === 0) return res.status(404).json({ error: 'User not found' });
 
