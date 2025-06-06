@@ -12,9 +12,9 @@ app.use(cors());
 // Database pool
 const pool = mysql.createPool({
   host: "localhost",
-  user: "root", // Replace with your MySQL username
-  password: "", // Replace with your MySQL password
-  database: "stake", // Replace with your MySQL database name
+  user: "lucifer", // Replace with your MySQL username
+  password: "Welcome@noida2024", // Replace with your MySQL password
+  database: "stake",
 });
 
 function getColor(number) {
