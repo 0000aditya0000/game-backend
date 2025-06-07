@@ -153,17 +153,22 @@ router.get("/referrals/:userId", async (req, res) => {
 });
 // User login
 router.post('/login', async (req, res) => {
+  // Destructure only email and password from the request body
   const { email, password } = req.body;
 
-  // Check if both email/username value and password are provided
+  // Log the received email/username/phone and password (for debugging)
+  console.log('Attempting login with:', { identifier: email, passwordProvided: !!password });
+
+  // Check if both email/username/phone value and password are provided
   if (!email || !password) {
-    return res.status(400).json({ error: 'Email/Username and password are required' });
+    console.log('Login failed: Missing identifier or password'); // Log failure reason
+    return res.status(400).json({ error: 'Email/Username/phone and password are required' });
   }
 
   try {
-    // Query to find the user by matching the provided value against either email OR username
-    const query = "SELECT * FROM users WHERE email = ? OR username = ?";
-    connection.query(query, [email, email], async (err, results) => {
+    // Query to find the user by matching the provided value against email, username, OR phone
+    const query = "SELECT * FROM users WHERE email = ? OR username = ? OR phone = ?";
+    connection.query(query, [email, email, email], async (err, results) => {
       if (err) return res.status(500).json({ error: 'Database query error' });
       if (results.length === 0) return res.status(404).json({ error: 'User not found' });
 
@@ -196,7 +201,7 @@ router.post('/login', async (req, res) => {
       });
     });
   } catch (error) {
-    console.error(error);
+    console.error('Unexpected error during login:', error); // Log unexpected error
     res.status(500).json({ error: 'Error logging in user' });
   }
 });
