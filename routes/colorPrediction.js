@@ -369,18 +369,36 @@ app.get("/prediction/:userid/history", async (req, res) => {
 //   }
 // })
 // Route to fetch all results from the database
-app.get("/results", async (req, res) => {
+app.post("/results", async (req, res) => {
   try {
-    // Query the results table
+    const { duration } = req.body;
+
+    // Validate duration
+    if (!duration || !["1min", "3min", "5min", "10min"].includes(duration)) {
+      return res.status(400).json({ 
+        error: "Invalid duration. Must be one of: 1min, 3min, 5min, 10min" 
+      });
+    }
+
+    // Query the results table with duration filter
     const [results] = await pool.query(
-      "SELECT * FROM result ORDER BY period_number DESC"
+      "SELECT * FROM result WHERE duration = ? ORDER BY period_number DESC",
+      [duration]
     );
 
     // Send the results as a JSON response
-    res.json({ results });
+    res.json({ 
+      success: true,
+      duration,
+      results 
+    });
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: "Internal server error." });
+    res.status(500).json({ 
+      success: false,
+      error: "Internal server error.",
+      message: error.message 
+    });
   }
 });
 
@@ -489,7 +507,7 @@ app.post("/bet-history", async (req, res) => {
 });
 
 app.post("/checkValidBet", async (req, res) => {
-  const { userId } = req.body;
+  const { userId,duration } = req.body;
 
   try {
     if (!userId || isNaN(userId)) {
@@ -497,8 +515,8 @@ app.post("/checkValidBet", async (req, res) => {
     }
 
     const [rows] = await pool.query(
-      `SELECT COUNT(*) AS count FROM bets WHERE user_id = ? AND status = 'pending'`,
-      [userId]
+      `SELECT COUNT(*) AS count FROM bets WHERE user_id = ? AND status = 'pending' AND duration = ?`,
+      [userId,duration]
     );
 
     const count = rows[0]?.count || 0; // Extract count value safely
