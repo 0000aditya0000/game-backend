@@ -331,12 +331,59 @@ router.delete('/delete/:id', async (req, res) => {
   }
 });
 
-// Simple status update for bank account
+
+// // Simple status update for bank account
+// router.put('/update-status/:id', async (req, res) => {
+//   try {
+//     const { id } = req.params;
+//     const { status } = req.body;
+
+//     if (status === undefined) {
+//       return res.status(400).json({
+//         success: false,
+//         message: 'Status is required'
+//       });
+//     }
+
+//     const updateQuery = "UPDATE bankaccount SET status = ? WHERE id = ?";
+    
+//     connection.query(updateQuery, [status, id], (err, results) => {
+//       if (err) {
+//         return res.status(500).json({
+//           success: false,
+//           message: 'Error updating status'
+//         });
+//       }
+
+//       if (results.affectedRows === 0) {
+//         return res.status(404).json({
+//           success: false,
+//           message: 'Bank account not found'
+//         });
+//       }
+
+//       res.json({
+//         success: true,
+//         message: Status updated successfully
+//       });
+//     });
+//   } catch (error) {
+//     res.status(500).json({
+//       success: false,
+//       message: 'Server error'
+//     });
+//   }
+// });  
+
+
+
+//============= modify Simple status update for bank account with note
 router.put('/update-status/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const { status } = req.body;
+    const { status, note } = req.body;
 
+    // Validate status
     if (status === undefined) {
       return res.status(400).json({
         success: false,
@@ -344,13 +391,28 @@ router.put('/update-status/:id', async (req, res) => {
       });
     }
 
-    const updateQuery = "UPDATE bankaccount SET status = ? WHERE id = ?";
+    // Require note for rejection (status 2)
+    if (status === 2 && !note) {
+      return res.status(400).json({
+        success: false,
+        message: 'Note is required when rejecting'
+      });
+    }
+
+    const updateQuery = `
+      UPDATE bankaccount 
+      SET status = ?, 
+          status_note = ?
+      
+      WHERE id = ?`;
     
-    connection.query(updateQuery, [status, id], (err, results) => {
+    connection.query(updateQuery, [status, note || null, id], (err, results) => {
       if (err) {
+        console.error('Database error:', err);
         return res.status(500).json({
           success: false,
-          message: 'Error updating status'
+          message: 'Error updating status',
+          error: err.message
         });
       }
 
@@ -361,15 +423,34 @@ router.put('/update-status/:id', async (req, res) => {
         });
       }
 
-      res.json({
-        success: true,
-        message: `Status updated successfully`
+      // Fetch updated record to return in response
+      const getUpdatedRecord = "SELECT id, status, status_note FROM bankaccount WHERE id = ?";
+      connection.query(getUpdatedRecord, [id], (err, record) => {
+        if (err) {
+          return res.status(500).json({
+            success: false,
+            message: 'Error fetching updated record'
+          });
+        }
+
+        res.json({
+          success: true,
+          message: `Status updated successfully`,
+          data: {
+            id: record[0].id,
+            status: record[0].status,
+            status_text: status === 1 ? 'Approved' : status === 2 ? 'Rejected' : 'Pending',
+            note: record[0].status_note,
+          }
+        });
       });
     });
   } catch (error) {
+    console.error('Server error:', error);
     res.status(500).json({
       success: false,
-      message: 'Server error'
+      message: 'Server error',
+      error: error.message
     });
   }
 });
