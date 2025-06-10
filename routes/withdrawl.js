@@ -565,7 +565,24 @@ router.delete('/withdrawl/:id', async (req, res) => {
 router.put('/withdrawal/approve/:id', async (req, res) => {
   try {
     const withdrawalId = req.params.id;
-    const numericStatus = parseInt(req.body.status); // status: 1 for approve, 2 for reject
+    const { status, note } = req.body; // Add note to destructuring
+    const numericStatus = parseInt(status);
+
+    // Validate status
+    if (![1, 2].includes(numericStatus)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid status. Use 1 for approve, 2 for reject"
+      });
+    }
+
+    // Require note when rejecting
+    if (numericStatus === 2 && !note) {
+      return res.status(400).json({
+        success: false,
+        message: "Rejection reason (note) is required when rejecting a withdrawal"
+      });
+    }
 
     // First get withdrawal details
     const getWithdrawalQuery = "SELECT * FROM withdrawl WHERE id = ? AND status = 0";
@@ -627,11 +644,12 @@ router.put('/withdrawal/approve/:id', async (req, res) => {
         }
 
         function updateWithdrawalStatus() {
-          const updateQuery = "UPDATE withdrawl SET status = ? WHERE id = ?";
+          // Modified query to include reject_note
+          const updateQuery = "UPDATE withdrawl SET status = ?, reject_note = ? WHERE id = ?";
 
-          connection.query(updateQuery, [numericStatus, withdrawalId], (err) => {
+          connection.query(updateQuery, [numericStatus, note || null, withdrawalId], (err) => {
             if (err) {
-              console.log('error in updateWithdrawalStatus',err)
+              console.log('error in updateWithdrawalStatus', err);
               return connection.rollback(() => {
                 res.status(500).json({
                   success: false,
@@ -640,8 +658,6 @@ router.put('/withdrawal/approve/:id', async (req, res) => {
                 });
               });
             }
-
-            
 
             connection.commit(err => {
               if (err) {
@@ -661,8 +677,11 @@ router.put('/withdrawal/approve/:id', async (req, res) => {
                 data: {
                   withdrawalId,
                   status: numericStatus === 1 ? 'approved' : 'rejected',
+                  status_code: numericStatus,
                   amount: withdrawal.balance,
-                  cryptoname: withdrawal.cryptoname
+                  cryptoname: withdrawal.cryptoname,
+                  reject_note: note || null,
+                  updated_at: new Date()
                 }
               });
             });
@@ -679,5 +698,4 @@ router.put('/withdrawal/approve/:id', async (req, res) => {
     });
   }
 });
-
 module.exports = router;
