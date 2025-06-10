@@ -1248,6 +1248,7 @@ router.get('/transactions/:userId', async (req, res) => {
                 id,
                 balance as amount,
                 cryptoname as type,
+                reject_note as   note,
                 CASE 
                     WHEN status = 0 THEN 'pending'
                     WHEN status = 1 THEN 'approved'
