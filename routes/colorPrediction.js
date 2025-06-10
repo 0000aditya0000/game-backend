@@ -12,8 +12,8 @@ app.use(cors());
 // Database pool
 const pool = mysql.createPool({
   host: "localhost",
-  user: "lucifer", // Replace with your MySQL username
-  password: "Welcome@noida2024", // Replace with your MySQL password
+  user: "root", // Replace with your MySQL username
+  password: "", // Replace with your MySQL password
   database: "stake",
 });
 
@@ -375,8 +375,8 @@ app.post("/results", async (req, res) => {
 
     // Validate duration
     if (!duration || !["1min", "3min", "5min", "10min"].includes(duration)) {
-      return res.status(400).json({ 
-        error: "Invalid duration. Must be one of: 1min, 3min, 5min, 10min" 
+      return res.status(400).json({
+        error: "Invalid duration. Must be one of: 1min, 3min, 5min, 10min"
       });
     }
 
@@ -387,54 +387,58 @@ app.post("/results", async (req, res) => {
     );
 
     // Send the results as a JSON response
-    res.json({ 
+    res.json({
       success: true,
       duration,
-      results 
+      results
     });
   } catch (error) {
     console.error(error);
-    res.status(500).json({ 
+    res.status(500).json({
       success: false,
       error: "Internal server error.",
-      message: error.message 
+      message: error.message
     });
   }
 });
 
-app.post("/period", async (req, res) => {
-  const { mins } = req.body;
-  try {
-    const query =
-      "SELECT period FROM result WHERE mins = ? ORDER BY period DESC LIMIT 1";
+// app.post("/period", async (req, res) => {
+//   const { mins } = req.body;
+//   try {
+//     const query =
+//       "SELECT period FROM result WHERE mins = ? ORDER BY period DESC LIMIT 1";
 
-    pool.query(query, [mins], (err, result) => {
-      if (err) {
-        return res.status(500).json({ error: "Database error" });
-      }
+//     pool.query(query, [mins], (err, result) => {
+//       if (err) {
+//         return res.status(500).json({ error: "Database error" });
+//       }
 
-      let newPeriod;
-      if (result.length > 0 && result[0].period) {
-        // Latest period ko 1 increment karna hai
-        let lastPeriod = result[0].period;
-        let numberPart = parseInt(lastPeriod.slice(-3)) + 1;
-        newPeriod =
-          lastPeriod.slice(0, -3) + numberPart.toString().padStart(3, "0");
-      } else {
-        // Naya period generate karna hai
-        const now = new Date();
-        const year = now.getFullYear();
-        const month = String(now.getMonth() + 1).padStart(2, "0");
-        const date = String(now.getDate()).padStart(2, "0");
-        newPeriod = `${year}${month}${date}0001`;
-      }
+//       let newPeriod;
+//       if (result.length > 0 && result[0].period) {
+//         // Latest period ko 1 increment karna hai
+//         let lastPeriod = result[0].period;
+//         let numberPart = parseInt(lastPeriod.slice(-3)) + 1;
+//         newPeriod =
+//           lastPeriod.slice(0, -3) + numberPart.toString().padStart(3, "0");
+//       } else {
+//         // Naya period generate karna hai
+//         const now = new Date();
+//         const year = now.getFullYear();
+//         const month = String(now.getMonth() + 1).padStart(2, "0");
+//         const date = String(now.getDate()).padStart(2, "0");
+//         newPeriod = `${year}${month}${date}0001`;
+//       }
 
-      res.json({ period: newPeriod });
-    });
-  } catch (error) {
-    res.status(500).json({ error: "Server error" });
-  }
-});
+//       res.json({ period: newPeriod });
+//     });
+//   } catch (error) {
+//     res.status(500).json({ error: "Server error" });
+//   }
+// });
+
+
+
+
 
 app.post("/bet-history", async (req, res) => {
   const { userId } = req.body;
@@ -507,7 +511,7 @@ app.post("/bet-history", async (req, res) => {
 });
 
 app.post("/checkValidBet", async (req, res) => {
-  const { userId,duration } = req.body;
+  const { userId, duration } = req.body;
 
   try {
     if (!userId || isNaN(userId)) {
@@ -516,7 +520,7 @@ app.post("/checkValidBet", async (req, res) => {
 
     const [rows] = await pool.query(
       `SELECT COUNT(*) AS count FROM bets WHERE user_id = ? AND status = 'pending' AND duration = ?`,
-      [userId,duration]
+      [userId, duration]
     );
 
     const count = rows[0]?.count || 0; // Extract count value safely
@@ -691,7 +695,7 @@ app.post("/timer", (req, res) => {
 });
 
 
-  //============ Place a bet with duration and period number modification ==============
+//============ Place a bet with duration and period number modification ==============
 app.post("/place-bet", async (req, res) => {
   const { userId, betType, betValue, amount, periodNumber, duration } = req.body;
 
@@ -810,8 +814,8 @@ app.post("/generate-result", async (req, res) => {
       winningColor = redBet.total_amount === greenBet.total_amount
         ? "voilet"
         : redBet.total_amount < greenBet.total_amount
-        ? "red"
-        : "green";
+          ? "red"
+          : "green";
     } else {
       winningColor = ["red", "green", "voilet"][Math.floor(Math.random() * 3)];
     }
@@ -880,7 +884,72 @@ app.post("/generate-result", async (req, res) => {
 });
 
 
+//   const { mins } = req.body; // input is still called `mins` from frontend
+
+//   try {
+//     const query =
+//       "SELECT period_number FROM result WHERE duration = ? ORDER BY period_number DESC LIMIT 1";
+
+//     pool.query(query, [mins], (err, result) => {
+//       if (err) {
+//         return res.status(500).json({ error: "Database error" });
+//       }
+
+//       let newPeriod;
+//       if (result.length > 0 && result[0].period_number) {
+//         let lastPeriod = result[0].period_number.toString();
+//         let numberPart = parseInt(lastPeriod.slice(-3)) + 1;
+//         newPeriod =
+//           lastPeriod.slice(0, -3) + numberPart.toString().padStart(3, "0");
+//       } else {
+//         const now = new Date();
+//         const year = now.getFullYear();
+//         const month = String(now.getMonth() + 1).padStart(2, "0");
+//         const date = String(now.getDate()).padStart(2, "0");
+//         newPeriod = `${year}${month}${date}001`;
+//       }
+
+//       res.json({ period: newPeriod });
+//     });
+//   } catch (error) {
+//     res.status(500).json({ error: "Server error" });
+//   }
+// });
+
+
+//================== modifiction to genrate the period number ==================
+app.post("/period", async (req, res) => {
+  const { mins } = req.body; // 'mins' means duration like '1min', '3min', etc.
+  console.log("API hit for duration:", mins);
+
+  try {
+    const [rows] = await pool.query(
+      "SELECT period_number FROM result WHERE duration = ? ORDER BY period_number DESC LIMIT 1",
+      [mins]
+    );
+
+    let newPeriodNumber;
+
+    if (rows.length > 0) {
+      // Get the last period_number and increment it
+      const lastPeriod = parseInt(rows[0].period_number);
+      newPeriodNumber = lastPeriod + 1;
+    } else {
+      // If no previous period exists for this duration
+      newPeriodNumber = 1;
+    }
+
+    res.json({ period_number: newPeriodNumber });
+  } catch (error) {
+    console.error(" MySQL/Server error:", error);
+    res.status(500).json({ error: "Server error", details: error.message });
+  }
+});
+
+
+
 
 
 
 module.exports = app;
+
