@@ -13,7 +13,7 @@ app.use(cors());
 const pool = mysql.createPool({
   host: "localhost",
   user: "lucifer", // Replace with your MySQL username
-  password: "Welcome@noida2024", // Replace with your MySQL password
+  password: "Welcome@noida", // Replace with your MySQL password
   database: "stake",
 });
 
