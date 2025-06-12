@@ -62,6 +62,7 @@ app.use("/api/slider", require("./routes/slider"));
 app.use("/api/color", require("./routes/colorPrediction"));
 app.use("/api/coupons",require("./routes/coupons"));
 app.use("/api/recharge", require("./routes/recharge"));
+app.use('/api/queries',require('./routes/queries' ));
 
 server.listen(PORT, () => {
     console.log(`Server is running on port ${PORT}`);
