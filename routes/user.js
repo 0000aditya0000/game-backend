@@ -21,7 +21,7 @@ const upload = multer({ storage });
 
 // User registration
 router.post('/register', async (req, res) => {
-  const { name, username, email, phoneNumber, referalCode, password, myReferralCode } = req.body;
+  const { name, username, email, phoneNumber, referalCode, password, myReferralCode,kyc_note } = req.body;
 
   try {
     const hashedPassword = await bcrypt.hash(password, 10);
@@ -47,10 +47,10 @@ router.post('/register', async (req, res) => {
 
     // Step 2: Insert the user
     const query = `
-      INSERT INTO users (username, name, email, password, phone, my_referral_code, referred_by)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO users (username, name, email, password, phone, my_referral_code, referred_by,kyc_note)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `;
-    connection.query(query, [username, name, email, hashedPassword, phoneNumber, myReferralCode, referredById], async (err, results) => {
+    connection.query(query, [username, name, email, hashedPassword, phoneNumber, myReferralCode, referredById,kyc_note], async (err, results) => {
       if (err) {
         console.log(err);
         return res.status(500).json({ error: 'Database error' });
@@ -1248,6 +1248,7 @@ router.get('/transactions/:userId', async (req, res) => {
                 id,
                 balance as amount,
                 cryptoname as type,
+                reject_note as   note,
                 CASE 
                     WHEN status = 0 THEN 'pending'
                     WHEN status = 1 THEN 'approved'
