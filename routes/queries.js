@@ -12,10 +12,11 @@ function generateQueryId() {
 // ======================= Submit a new query ==========
 router.post('/submit', async (req, res) => {
     try {
-        const { name, email, phone, telegram_id, query_type, message } = req.body;
+   const { user_id, name, email, phone, telegram_id, query_type, message } = req.body;
+
 
         // Validate required fields
-        if (!name || !email || !phone || !query_type || !message) {
+        if (!user_id||!name || !email || !phone || !query_type || !message) {
             return res.status(400).json({
                 success: false,
                 message: "All fields except Telegram ID are required"
@@ -34,15 +35,15 @@ router.post('/submit', async (req, res) => {
         // Generate unique query ID
         const queryId = generateQueryId();
 
-        const query = `
-            INSERT INTO user_queries 
-            (id, name, email, phone, telegram_id, query_type, message) 
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        `;
+      const query = `
+    INSERT INTO user_queries 
+    (id, user_id, name, email, phone, telegram_id, query_type, message) 
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `;
 
         connection.query(
             query,
-            [queryId, name, email, phone, telegram_id, query_type, message],
+            [queryId, user_id, name, email, phone, telegram_id, query_type, message],
             (err, results) => {
                 if (err) {
                     console.error('Error submitting query:', err);
@@ -322,5 +323,44 @@ router.put('/:queryId/status', async (req, res) => {
         });
     }
 });
+
+// ============= Get all queries by user_id ===============
+router.get('/user/:userId', async (req, res) => {
+    try {
+        const { userId } = req.params;
+
+        const query = `
+            SELECT q.*, 
+                   COUNT(c.id) as comment_count
+            FROM user_queries q
+            LEFT JOIN query_comments c ON q.id = c.query_id
+            WHERE q.user_id = ?
+            GROUP BY q.id
+            ORDER BY q.created_at DESC
+        `;
+
+        connection.query(query, [userId], (err, results) => {
+            if (err) {
+                console.error('Database error:', err);
+                return res.status(500).json({
+                    success: false,
+                    message: "Error fetching user queries"
+                });
+            }
+
+            res.json({
+                success: true,
+                data: results
+            });
+        });
+    } catch (error) {
+        console.error('Server error:', error);
+        res.status(500).json({
+            success: false,
+            message: "Internal server error"
+        });
+    }
+});
+
 
 module.exports = router;
