@@ -150,11 +150,13 @@ router.get("/referrals/:userId", async (req, res) => {
             r.level,
             (SELECT d.amount FROM deposits d WHERE d.userId = u.id ORDER BY d.created_at ASC LIMIT 1) AS first_deposit,
             (SELECT SUM(d.amount) FROM deposits d WHERE d.userId = u.id) AS total_deposit,
-            (SELECT SUM(b.amount) FROM bets b WHERE b.user_id = u.id) AS total_bets
+            (SELECT SUM(b.amount) FROM bets b WHERE b.user_id = u.id) AS total_bets,            
+            (SELECT IFNULL(SUM(c.amount), 0) FROM referralcommissionhistory c WHERE c.user_id = ? AND c.referred_user_id = u.id AND c.credited = 0 ) AS pending_commission
             FROM referrals r JOIN users u ON r.referred_id = u.id WHERE r.referrer_id = ? ORDER BY r.level
         `;
+        const [referrerId] = [req.params.userId];
 
-        connection.query(sql, [userId], (err, results) => {
+        connection.query(sql, [referrerId, referrerId], (err, results) => {
         if (err) return reject(err);
         resolve(results);
       });
