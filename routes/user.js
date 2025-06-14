@@ -21,7 +21,14 @@ const upload = multer({ storage });
 
 // User registration
 router.post('/register', async (req, res) => {
-  const { name, username, email, phoneNumber, referalCode, password, myReferralCode,kyc_note } = req.body;
+  const { name, username, email, phoneNumber, referalCode, password, myReferralCode, kyc_note } = req.body;
+
+  // Validate mandatory fields
+  if (!phoneNumber || !myReferralCode || !password) {
+    return res.status(400).json({ 
+      error: 'Phone number, referral code, and password are required fields' 
+    });
+  }
 
   try {
     const hashedPassword = await bcrypt.hash(password, 10);
@@ -45,12 +52,21 @@ router.post('/register', async (req, res) => {
       }
     }
 
-    // Step 2: Insert the user
+    // Step 2: Insert the user with optional fields
     const query = `
-      INSERT INTO users (username, name, email, password, phone, my_referral_code, referred_by,kyc_note)
+      INSERT INTO users (username, name, email, password, phone, my_referral_code, referred_by, kyc_note)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `;
-    connection.query(query, [username, name, email, hashedPassword, phoneNumber, myReferralCode, referredById,kyc_note], async (err, results) => {
+    connection.query(query, [
+      username || null, 
+      name || null, 
+      email || null, 
+      hashedPassword, 
+      phoneNumber, 
+      myReferralCode, 
+      referredById, 
+      kyc_note || null
+    ], async (err, results) => {
       if (err) {
         console.log(err);
         return res.status(500).json({ error: 'Database error' });
