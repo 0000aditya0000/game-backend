@@ -141,14 +141,23 @@ router.get("/referrals/:userId", async (req, res) => {
   try {
     // Get all referrals for this user up to level 5
     const referrals = await new Promise((resolve, reject) => {
-      connection.query(
-        "SELECT u.id, u.name, u.username, u.email, r.level FROM referrals r JOIN users u ON r.referred_id = u.id WHERE r.referrer_id = ? ORDER BY r.level",
-        [userId],
-        (err, results) => {
-          if (err) return reject(err);
-          resolve(results);
-        }
-      );
+     const sql = `
+          SELECT 
+            u.id,
+            u.name,
+            u.username,
+            u.email,
+            r.level,
+            (SELECT d.amount FROM deposits d WHERE d.userId = u.id ORDER BY d.created_at ASC LIMIT 1) AS first_deposit,
+            (SELECT SUM(d.amount) FROM deposits d WHERE d.userId = u.id) AS total_deposit,
+            (SELECT SUM(b.amount) FROM bets b WHERE b.user_id = u.id) AS total_bets
+            FROM referrals r JOIN users u ON r.referred_id = u.id WHERE r.referrer_id = ? ORDER BY r.level
+        `;
+
+        connection.query(sql, [userId], (err, results) => {
+        if (err) return reject(err);
+        resolve(results);
+      });
     });
 
     // Group referrals by level
@@ -1884,9 +1893,3 @@ router.get('/game-transactions/:userId', async (req, res) => {
 
 
 module.exports = router;
-
-
-
-
-
-
