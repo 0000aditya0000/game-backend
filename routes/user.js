@@ -31,6 +31,21 @@ router.post('/register', async (req, res) => {
   }
 
   try {
+    // Check if phone number already exists
+    const phoneCheckQuery = "SELECT id FROM users WHERE phone = ?";
+    const [existingUser] = await new Promise((resolve, reject) => {
+      connection.query(phoneCheckQuery, [phoneNumber], (err, results) => {
+        if (err) return reject(err);
+        resolve(results);
+      });
+    });
+
+    if (existingUser) {
+      return res.status(400).json({ 
+        error: 'Phone number is already registered' 
+      });
+    }
+
     const hashedPassword = await bcrypt.hash(password, 10);
 
     // Step 1: Get referred user's ID (if referral code is provided)
