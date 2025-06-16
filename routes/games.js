@@ -3,6 +3,7 @@ const connection = require('../config/db');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs')
+const axios = require('axios');
 
 const router = express.Router();
 
@@ -213,6 +214,50 @@ router.get('/all-games', async (req, res) => {
     });
   } catch (error) {
     res.status(500).json({ error: 'Error fetching games data' });
+  }
+});
+
+
+
+//=============== fetch games by provider calling external api POST /api/provider-games ==========
+
+router.post('/provider-games', async (req, res) => {
+  const { provider } = req.body;
+
+  if (!provider) {
+    return res.status(400).json({ error: 'Provider name is required' });
+  }
+
+  try {
+    const response = await axios.post('https://gamelist.workorder.icu', {
+      hall: "941711",
+      key: "rollix777",
+      cmd: "getGamesList",
+      cdnUrl: "",
+      img: "game_img_2"
+    });
+
+    const allGamesData = response.data;
+
+    // Check status
+    if (allGamesData.status !== "success") {
+      return res.status(500).json({ error: "External API returned failure status" });
+    }
+
+    const games = allGamesData.content[provider.toLowerCase()];
+
+    if (!games) {
+      return res.status(404).json({ error: `Provider '${provider}' not found` });
+    }
+
+    res.json({
+      provider,
+      games
+    });
+
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: 'Something went wrong while fetching games' });
   }
 });
 
