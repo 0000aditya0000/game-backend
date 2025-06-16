@@ -13,7 +13,7 @@ const router = express.Router();
 
 // Create a new withdrawal request
 router.post('/withdrawl', async (req, res) => {
-  const { type, bankname, amount, currency, balance, userId, walletAddress, cryptoname,network } = req.body;
+  const { userId, currency, amount, walletAddress, network, bankname } = req.body;
 
   // First check userId
   if (!userId) {
@@ -23,31 +23,27 @@ router.post('/withdrawl', async (req, res) => {
     });
   }
 
-  // Validate based on type
-  if (type === 'bank') {
-    if (!balance || !bankname || !currency) {
+  // Validate based on currency
+  if (currency === 'usdt') {
+    if (!amount || !walletAddress || !network) {
       return res.status(400).json({
         success: false,
-        message: 'All fields are required'
+        message: 'For USDT withdrawals, amount, walletAddress and network are required'
       });
     }
-  } else if (type === 'crypto') {
-    if (!amount || !cryptoname || !walletAddress || !network) {
+  } else if (currency === 'inr') {
+    if (!amount || !bankname) {
       return res.status(400).json({
         success: false,
-        message: 'All fields are required'
+        message: 'For INR withdrawals, amount and bankname are required'
       });
     }
   } else {
     return res.status(400).json({
       success: false,
-      message: 'Invalid withdrawal type. Must be either "bank" or "crypto"'
+      message: 'Invalid currency. Must be either "usdt" or "inr"'
     });
   }
-
-  // Set the amount and currency/cryptoname to check in wallet
-  const amountToDeduct = type === 'bank' ? balance : amount;
-  const currencyToCheck = type === 'bank' ? currency : cryptoname;
 
   try {
     // Start a transaction
@@ -63,10 +59,10 @@ router.post('/withdrawl', async (req, res) => {
       const checkBalanceQuery = `
         SELECT balance 
         FROM wallet 
-        WHERE userId = ? AND cryptoname = ?
+        WHERE userId = ? AND cryptoname = 'inr'
       `;
 
-      connection.query(checkBalanceQuery, [userId, currencyToCheck], (err, results) => {
+      connection.query(checkBalanceQuery, [userId], (err, results) => {
         if (err) {
           return connection.rollback(() => {
             res.status(500).json({
@@ -76,7 +72,9 @@ router.post('/withdrawl', async (req, res) => {
           });
         }
 
-        if (results.length === 0 || results[0].balance < amountToDeduct) {
+        console.log('Wallet balance results:', results);
+        
+        if (results.length === 0 || parseFloat(results[0].balance) < parseFloat(amount)) {
           return connection.rollback(() => {
             res.status(400).json({
               success: false,
@@ -89,10 +87,10 @@ router.post('/withdrawl', async (req, res) => {
         const deductBalanceQuery = `
           UPDATE wallet 
           SET balance = balance - ? 
-          WHERE userId = ? AND cryptoname = ?
+          WHERE userId = ? AND cryptoname = 'inr'
         `;
 
-        connection.query(deductBalanceQuery, [amountToDeduct, userId, currencyToCheck], (err) => {
+        connection.query(deductBalanceQuery, [amount, userId], (err) => {
           if (err) {
             return connection.rollback(() => {
               res.status(500).json({
@@ -102,26 +100,26 @@ router.post('/withdrawl', async (req, res) => {
             });
           }
 
-          // Insert into withdrawl table based on type
+          // Insert into withdrawl table based on currency
           let insertQuery;
           let insertParams;
 
-          if (type === 'bank') {
+          if (currency === 'inr') {
             insertQuery = `
               INSERT INTO withdrawl (
                 userId, balance, cryptoname, bankName,
                 status, createdOn
               ) VALUES (?, ?, ?, ?, ?, NOW())
             `;
-            insertParams = [userId, balance, currency, bankname,0];
+            insertParams = [userId, amount, currency, bankname, 0];
           } else {
             insertQuery = `
               INSERT INTO withdrawl (
                 userId, balance, cryptoname, walletAddress,
-                status, createdOn
-              ) VALUES (?, ?, ?, ?, ?, NOW())
+                networkType, status, createdOn
+              ) VALUES (?, ?, ?, ?, ?, ?, NOW())
             `;
-            insertParams = [userId, amount, cryptoname, walletAddress,0];
+            insertParams = [userId, amount, currency, walletAddress, network, 0];
           }
 
           connection.query(insertQuery, insertParams, (err, result) => {
@@ -150,13 +148,12 @@ router.post('/withdrawl', async (req, res) => {
                 message: 'Withdrawal request created successfully',
                 data: {
                   withdrawalId: result.insertId,
-                  type,
-                  amount: amountToDeduct,
-                  currency: currencyToCheck,
+                  currency,
+                  amount,
                   status: 'pending',
-                  ...(type === 'bank' 
+                  ...(currency === 'inr' 
                     ? { bankname } 
-                    : { walletAddress })
+                    : { walletAddress, network })
                 }
               });
             });
