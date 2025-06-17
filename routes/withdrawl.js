@@ -618,11 +618,11 @@ router.put('/withdrawal/approve/:id', async (req, res) => {
           const refundQuery = `
             UPDATE wallet 
             SET balance = balance + ? 
-            WHERE userId = ? AND cryptoname = ?
+            WHERE userId = ? AND cryptoname = 'inr'
           `;
 
           connection.query(refundQuery,
-            [withdrawal.balance, withdrawal.userId, withdrawal.cryptoname],
+            [withdrawal.balance, withdrawal.userId],
             (err) => {
               if (err) {
                 return connection.rollback(() => {
@@ -695,4 +695,7 @@ router.put('/withdrawal/approve/:id', async (req, res) => {
     });
   }
 });
+
+
+
 module.exports = router;
