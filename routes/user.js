@@ -378,7 +378,7 @@ router.patch('/user/:id', upload.single('image'), async (req, res) => {
   const { username, name, email, phone } = req.body;
 
   // if image file is uploaded, multer will attach it in req.file
-  const imagePath = req.file ? `uploads/${req.file.filename}` : null;
+  const  imagePath = req.file ? `uploads/${req.file.filename}` : null;
 
   try {
     const query = `
