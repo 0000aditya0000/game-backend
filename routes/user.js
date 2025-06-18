@@ -371,18 +371,26 @@ router.delete('/user/:id', async (req, res) => {
 });
 
 
-// Update user details by ID
-router.patch('/user/:id', async (req, res) => {
+
+//  Update user route with multer middleware
+router.patch('/user/:id', upload.single('image'), async (req, res) => {
   const userId = req.params.id;
-  const { username, name, email, phone, image } = req.body;
-  console.log(req.body, "body");
+  const { username, name, email, phone } = req.body;
+
+  // if image file is uploaded, multer will attach it in req.file
+  const imagePath = req.file ? `uploads/${req.file.filename}` : null;
+
   try {
-    const query = "UPDATE users SET username = ?,name = ?, email = ?, phone = ?, image = ? WHERE id = ?";
-    connection.query(query, [username, name, email, phone, image, userId], (err, results) => {
+    const query = `
+      UPDATE users 
+      SET username = ?, name = ?, email = ?, phone = ?, image = COALESCE(?, image)
+      WHERE id = ?
+    `;
+    connection.query(query, [username, name, email, phone, imagePath, userId], (err, results) => {
       if (err) return res.status(500).json({ error: err.message });
       if (results.affectedRows === 0) return res.status(404).json({ error: 'User not found' });
-      console.log("User details updated successfully");
-      res.json({ message: 'User details updated successfully' });
+
+      res.json({ message: 'User details updated successfully', image: imagePath });
     });
   } catch (error) {
     res.status(500).json({ error: 'Error updating user details' });
