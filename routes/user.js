@@ -7,17 +7,30 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const router = express.Router();
+const { CloudinaryStorage } = require("multer-storage-cloudinary");
+const cloudinary = require("../config/cloudinary.config");
 
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, 'uploads/');
-  },
-  filename: (req, file, cb) => {
-    cb(null, Date.now() + path.extname(file.originalname));
+const storage = new CloudinaryStorage({
+  cloudinary: cloudinary,
+  params: {
+  folder: "user_images",
+    allowed_formats: ["jpg", "png", "jpeg", "gif"],
+    public_id: (req, file) => `${Date.now()}-${file.originalname.split('.')[0]}`,
   },
 });
 
 const upload = multer({ storage });
+
+// const storage = multer.diskStorage({
+//   destination: (req, file, cb) => {
+//     cb(null, 'uploads/');
+//   },
+//   filename: (req, file, cb) => {
+//     cb(null, Date.now() + path.extname(file.originalname));
+//   },
+// });
+
+// const upload = multer({ storage });
 
 // User registration
 router.post('/register', async (req, res) => {
@@ -390,12 +403,41 @@ router.delete('/user/:id', async (req, res) => {
 //   }
 // }); 
 //  Update user route with multer middleware
+
+
+// router.patch('/user/:id', upload.single('image'), async (req, res) => {
+//   const userId = req.params.id;
+//   const { username, name, email, phone } = req.body;
+
+//   // if image file is uploaded, multer will attach it in req.file
+//   const  imagePath = req.file ? `uploads/${req.file.filename}` : null;
+
+//   try {
+//     const query = `
+//       UPDATE users 
+//       SET username = ?, name = ?, email = ?, phone = ?, image = COALESCE(?, image)
+//       WHERE id = ?
+//     `;
+//     connection.query(query, [username, name, email, phone, imagePath, userId], (err, results) => {
+//       if (err) return res.status(500).json({ error: err.message });
+//       if (results.affectedRows === 0) return res.status(404).json({ error: 'User not found' });
+
+//       res.json({  message: 'User details updated successfully', image: imagePath });
+//     });
+//   } catch (error) {
+//     res.status(500).json({ error: 'Error updating user details' });
+//   }
+// });
+
+
+
+
 router.patch('/user/:id', upload.single('image'), async (req, res) => {
   const userId = req.params.id;
   const { username, name, email, phone } = req.body;
 
-  // if image file is uploaded, multer will attach it in req.file
-  const  imagePath = req.file ? `uploads/${req.file.filename}` : null;
+  // Cloudinary returns full URL
+  const imagePath = req.file ? req.file.path : null;
 
   try {
     const query = `
@@ -403,11 +445,15 @@ router.patch('/user/:id', upload.single('image'), async (req, res) => {
       SET username = ?, name = ?, email = ?, phone = ?, image = COALESCE(?, image)
       WHERE id = ?
     `;
+
     connection.query(query, [username, name, email, phone, imagePath, userId], (err, results) => {
       if (err) return res.status(500).json({ error: err.message });
       if (results.affectedRows === 0) return res.status(404).json({ error: 'User not found' });
 
-      res.json({  message: 'User details updated successfully', image: imagePath });
+      res.json({
+        message: 'User details updated successfully',
+        image: imagePath,
+      });
     });
   } catch (error) {
     res.status(500).json({ error: 'Error updating user details' });
