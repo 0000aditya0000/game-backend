@@ -371,18 +371,43 @@ router.delete('/user/:id', async (req, res) => {
 });
 
 
-// Update user details by ID
-router.patch('/user/:id', async (req, res) => {
+
+
+//   router.patch('/user/:id', async (req, res) => {
+//   const userId = req.params.id;
+//   const { username, name, email, phone, image } = req.body;
+//   console.log(req.body, "body");
+//   try {
+//     const query = "UPDATE users SET username = ?,name = ?, email = ?, phone = ?, image = ? WHERE id = ?";
+//     connection.query(query, [username, name, email, phone, image, userId], (err, results) => {
+//       if (err) return res.status(500).json({ error: err.message });
+//       if (results.affectedRows === 0) return res.status(404).json({ error: 'User not found' });
+//       console.log("User details updated successfully");
+//       res.json({ message: 'User details updated successfully' });
+//     });
+//   } catch (error) {
+//     res.status(500).json({ error: 'Error updating user details' });
+//   }
+// }); 
+//  Update user route with multer middleware
+router.patch('/user/:id', upload.single('image'), async (req, res) => {
   const userId = req.params.id;
-  const { username, name, email, phone, image } = req.body;
-  console.log(req.body, "body");
+  const { username, name, email, phone } = req.body;
+
+  // if image file is uploaded, multer will attach it in req.file
+  const  imagePath = req.file ? `uploads/${req.file.filename}` : null;
+
   try {
-    const query = "UPDATE users SET username = ?,name = ?, email = ?, phone = ?, image = ? WHERE id = ?";
-    connection.query(query, [username, name, email, phone, image, userId], (err, results) => {
+    const query = `
+      UPDATE users 
+      SET username = ?, name = ?, email = ?, phone = ?, image = COALESCE(?, image)
+      WHERE id = ?
+    `;
+    connection.query(query, [username, name, email, phone, imagePath, userId], (err, results) => {
       if (err) return res.status(500).json({ error: err.message });
       if (results.affectedRows === 0) return res.status(404).json({ error: 'User not found' });
-      console.log("User details updated successfully");
-      res.json({ message: 'User details updated successfully' });
+
+      res.json({  message: 'User details updated successfully', image: imagePath });
     });
   } catch (error) {
     res.status(500).json({ error: 'Error updating user details' });
@@ -1253,11 +1278,11 @@ router.get('/transactions/:userId', async (req, res) => {
   try {
     const { userId } = req.params;
 
-    // First check if user exists
+    // 1. Check if user exists
     const userQuery = "SELECT id, username FROM users WHERE id = ?";
     const [user] = await new Promise((resolve, reject) => {
       connection.query(userQuery, [userId], (err, results) => {
-        if (err) reject(err);
+        if (err) return reject(err);
         resolve(results);
       });
     });
@@ -1269,68 +1294,95 @@ router.get('/transactions/:userId', async (req, res) => {
       });
     }
 
-    // Get recharge history
+    // 2. Recharge History
     const rechargeQuery = `
-            SELECT 
-                'recharge' as transaction_type,
-                recharge_id as id,
-                order_id,
-                recharge_amount as amount,
-                recharge_type as type,
-                payment_mode,
-                recharge_status as status,
-                CONCAT(date, ' ', time) as transaction_date
-            FROM recharge 
-            WHERE userId = ?`;
+      SELECT 
+        'recharge' AS transaction_type,
+        recharge_id AS id,
+        order_id,
+        recharge_amount AS amount,
+        recharge_type AS type,
+        payment_mode,
+        recharge_status AS status,
+        CONCAT(date, ' ', time) AS transaction_date,
+        NULL AS note
+      FROM recharge 
+      WHERE userId = ?
+    `;
 
-    // Get withdrawal history
+    // 3. Withdrawal History
     const withdrawalQuery = `
-            SELECT 
-                'withdrawal' as transaction_type,
-                id,
-                balance as amount,
-                cryptoname as type,
-                reject_note as   note,
-                CASE 
-                    WHEN status = 0 THEN 'pending'
-                    WHEN status = 1 THEN 'approved'
-                    WHEN status = 2 THEN 'rejected'
-                END as status,
-                NULL as order_id,
-                NULL as payment_mode,
-                DATE_FORMAT(NOW(), '%Y-%m-%d %H:%i:%s') as transaction_date
-            FROM withdrawl 
-            WHERE userId = ?`;
+      SELECT 
+        'withdrawal' AS transaction_type,
+        id,
+        NULL AS order_id,
+        balance AS amount,
+        cryptoname AS type,
+        NULL AS payment_mode,
+        CASE 
+          WHEN status = 0 THEN 'pending'
+          WHEN status = 1 THEN 'approved'
+          WHEN status = 2 THEN 'rejected'
+        END AS status,
+        DATE_FORMAT(NOW(), '%Y-%m-%d %H:%i:%s') AS transaction_date,
+        reject_note AS note
+      FROM withdrawl 
+      WHERE userId = ?
+    `;
 
-    // Execute both queries
-    const [recharges, withdrawals] = await Promise.all([
+    // 4. Coupon Redemption History
+    const couponQuery = `
+      SELECT 
+        'coupon_redeem' AS transaction_type,
+        cu.id,
+        NULL AS order_id,
+        cu.amount_credited AS amount,
+        'INR' AS type,
+        'coupon' AS payment_mode,
+        'success' AS status,
+        DATE_FORMAT(cu.used_at, '%Y-%m-%d %H:%i:%s') AS transaction_date,
+        c.code AS note
+      FROM coupon_usage cu
+      JOIN coupons c ON cu.coupon_id = c.id
+      WHERE cu.user_id = ?
+    `;
+
+    // Execute all 3 queries in parallel
+    const [recharges, withdrawals, coupons] = await Promise.all([
       new Promise((resolve, reject) => {
         connection.query(rechargeQuery, [userId], (err, results) => {
-          if (err) reject(err);
+          if (err) return reject(err);
           resolve(results);
         });
       }),
       new Promise((resolve, reject) => {
         connection.query(withdrawalQuery, [userId], (err, results) => {
-          if (err) reject(err);
+          if (err) return reject(err);
+          resolve(results);
+        });
+      }),
+      new Promise((resolve, reject) => {
+        connection.query(couponQuery, [userId], (err, results) => {
+          if (err) return reject(err);
           resolve(results);
         });
       })
     ]);
 
-    // Combine and sort all transactions by date
-    const allTransactions = [...recharges, ...withdrawals]
+    // 5. Merge all transactions and sort by date (latest first)
+    const allTransactions = [...recharges, ...withdrawals, ...coupons]
       .sort((a, b) => new Date(b.transaction_date) - new Date(a.transaction_date));
 
+    // 6. Send response
     res.json({
       success: true,
       user: {
         id: user.id,
         username: user.username
       },
-      transactions: allTransactions.map(transaction => ({
-        ...transaction,
-        transaction_date: new Date(transaction.transaction_date).toLocaleString()
+      transactions: allTransactions.map(txn => ({
+        ...txn,
+        transaction_date: new Date(txn.transaction_date).toLocaleString() // beautify date
       }))
     });
 
@@ -1343,6 +1395,8 @@ router.get('/transactions/:userId', async (req, res) => {
     });
   }
 });
+
+
 
 //================= Get user betting statistics ==========
 router.get('/user-bet-stats/:userId', async (req, res) => {
