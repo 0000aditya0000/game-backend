@@ -10,6 +10,7 @@ const router = express.Router();
 const { CloudinaryStorage } = require("multer-storage-cloudinary");
 const cloudinary = require("../config/cloudinary.config");
 
+// This for upload user profile image to cloudinary
 const storage = new CloudinaryStorage({
   cloudinary: cloudinary,
   params: {
@@ -21,16 +22,20 @@ const storage = new CloudinaryStorage({
 
 const upload = multer({ storage });
 
-// const storage = multer.diskStorage({
-//   destination: (req, file, cb) => {
-//     cb(null, 'uploads/');
-//   },
-//   filename: (req, file, cb) => {
-//     cb(null, Date.now() + path.extname(file.originalname));
-//   },
-// });
+// This for upload user kyc images to cloudinary
+const kycstorage = new CloudinaryStorage({
+  cloudinary: cloudinary,
+  params: {
+    folder: "user_kyc",
+    allowed_formats: ["jpg", "png", "jpeg"],
+    public_id: (req, file) => `${Date.now()}-${file.originalname.split('.')[0]}`,
+  },
+});
 
-// const upload = multer({ storage });
+const kycUpload = multer({ storage: kycstorage });
+
+
+
 
 // User registration
 router.post('/register', async (req, res) => {
@@ -384,54 +389,7 @@ router.delete('/user/:id', async (req, res) => {
 });
 
 
-
-
-//   router.patch('/user/:id', async (req, res) => {
-//   const userId = req.params.id;
-//   const { username, name, email, phone, image } = req.body;
-//   console.log(req.body, "body");
-//   try {
-//     const query = "UPDATE users SET username = ?,name = ?, email = ?, phone = ?, image = ? WHERE id = ?";
-//     connection.query(query, [username, name, email, phone, image, userId], (err, results) => {
-//       if (err) return res.status(500).json({ error: err.message });
-//       if (results.affectedRows === 0) return res.status(404).json({ error: 'User not found' });
-//       console.log("User details updated successfully");
-//       res.json({ message: 'User details updated successfully' });
-//     });
-//   } catch (error) {
-//     res.status(500).json({ error: 'Error updating user details' });
-//   }
-// }); 
-//  Update user route with multer middleware
-
-
-// router.patch('/user/:id', upload.single('image'), async (req, res) => {
-//   const userId = req.params.id;
-//   const { username, name, email, phone } = req.body;
-
-//   // if image file is uploaded, multer will attach it in req.file
-//   const  imagePath = req.file ? `uploads/${req.file.filename}` : null;
-
-//   try {
-//     const query = `
-//       UPDATE users 
-//       SET username = ?, name = ?, email = ?, phone = ?, image = COALESCE(?, image)
-//       WHERE id = ?
-//     `;
-//     connection.query(query, [username, name, email, phone, imagePath, userId], (err, results) => {
-//       if (err) return res.status(500).json({ error: err.message });
-//       if (results.affectedRows === 0) return res.status(404).json({ error: 'User not found' });
-
-//       res.json({  message: 'User details updated successfully', image: imagePath });
-//     });
-//   } catch (error) {
-//     res.status(500).json({ error: 'Error updating user details' });
-//   }
-// });
-
-
-
-
+//====  Update user info and upload user profile images with multer middleware + cloudinary ====
 router.patch('/user/:id', upload.single('image'), async (req, res) => {
   const userId = req.params.id;
   const { username, name, email, phone } = req.body;
@@ -501,104 +459,25 @@ router.put('/user/password/:id', async (req, res) => {
 });
 
 
-// kyc request from user end
-router.put(
-  "/user/:id/kyc",
-  upload.fields([
-    { name: "aadharImage", maxCount: 1 },
-    { name: "panImage", maxCount: 1 },
-  ]),
-  async (req, res) => {
-    const userId = req.params.id;
-    const { kycstatus = 0 } = req.body;
-
-    console.log("Files received in request:", req.files);
-    console.log("Body:", req.body);
-
-    const aadhar = req.files?.aadharImage?.[0]?.filename || null;
-    const pan = req.files?.panImage?.[0]?.filename || null;
-
-    console.log("Processed Inputs:", { aadhar, pan, kycstatus, userId });
-
-    if (!aadhar && !pan) {
-      return res
-        .status(400)
-        .json({ error: "At least one image is required for KYC update" });
-    }
-
-    try {
-      const fieldsToUpdate = [];
-      const values = [];
-
-      if (aadhar) {
-        fieldsToUpdate.push("aadhar = ?");
-        values.push(aadhar);
-      }
-      if (pan) {
-        fieldsToUpdate.push("pan = ?");
-        values.push(pan);
-      }
-
-      fieldsToUpdate.push("kycstatus = ?");
-      values.push(kycstatus);
-      values.push(userId);
-
-      const query = `
-        UPDATE users 
-        SET ${fieldsToUpdate.join(", ")} 
-        WHERE id = ?
-      `;
-
-      console.log("Generated Query:", query);
-      console.log("Query Values:", values);
-
-      connection.query(query, [aadhar, pan, kycstatus, userId], (err, results) => {
-        if (err) {
-          console.error("Database query error:", err);
-          return res.status(500).json({ error: "Database query error" });
-        }
-
-        if (results.affectedRows === 0) {
-          return res.status(404).json({ error: "User not found" });
-        }
-
-        res.json({
-          message: "KYC details updated successfully",
-          aadhar: aadhar || "No change",
-          pan: pan || "No change",
-          kycstatus,
-        });
-      });
-    } catch (error) {
-      console.error("Error updating KYC details:", error);
-      res.status(500).json({ error: "Internal server error" });
-    }
-  }
-);
-
-
 // upload aadhar front and back and pan image for kyc
 
-router.put(
-  "/:id/kyc",
-  upload.fields([
+router.put("/:id/kyc", 
+  kycUpload.fields([
     { name: "aadharFront", maxCount: 1 },
     { name: "aadharBack", maxCount: 1 },
-    { name: "panImage", maxCount: 1 },
-  ]),
+    { name: "panImage", maxCount: 1 }
+  ]), 
   async (req, res) => {
     const userId = req.params.id;
     const { kycstatus = 0 } = req.body;
 
-    console.log("Files received in request:", req.files);
-
-    const aadharFront = req.files?.aadharFront?.[0]?.filename || null;
-    const aadharBack = req.files?.aadharBack?.[0]?.filename || null;
-    const pan = req.files?.panImage?.[0]?.filename || null;
+    const aadharFront = req.files?.aadharFront?.[0]?.path || null;
+    const aadharBack = req.files?.aadharBack?.[0]?.path || null;
+    const pan = req.files?.panImage?.[0]?.path || null;
 
     if (!aadharFront && !aadharBack && !pan) {
       return res.status(400).json({
-        error: "At least one image (Aadhar Front, Back, or PAN) is required",
+        error: "At least one image (Aadhar Front, Back, or PAN) is required"
       });
     }
 
@@ -629,13 +508,10 @@ router.put(
         WHERE id = ?
       `;
 
-      console.log("Generated Query:", query);
-      console.log("Query Values:", values);
-
       connection.query(query, values, (err, results) => {
         if (err) {
           console.error("Database query error:", err);
-          return res.status(500).json({ error: "Database query error" });
+          return res.status(500).json({ error: "Database error" });
         }
 
         if (results.affectedRows === 0) {
@@ -643,19 +519,18 @@ router.put(
         }
 
         res.json({
-          message: "KYC details updated successfully",
-          aadharFront: aadharFront || "No change",
-          aadharBack: aadharBack || "No change",
-          pan: pan || "No change",
-          kycstatus,
+          message: "KYC updated successfully",
+          aadharFront: aadharFront || "No Change",
+          aadharBack: aadharBack || "No Change",
+          pan: pan || "No Change",
+          kycstatus
         });
       });
-    } catch (error) {
-      console.error("Error updating KYC details:", error);
-      res.status(500).json({ error: "Internal server error" });
+    } catch (err) {
+      console.error("Server error:", err);
+      res.status(500).json({ error: "Internal Server Error" });
     }
-  }
-);
+});
 
 
 
