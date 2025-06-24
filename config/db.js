@@ -11,7 +11,7 @@ connection.connect(err => {
     console.error("Database connection failed:", err.message);
     console.log(err.message, "errormessage");
   } else {
-    console.log("Connected to MySQL database");
+    console.log("Connected to MySQL  database");
   }
 });
 
