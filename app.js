@@ -11,8 +11,13 @@ const server = http.createServer(app);
 const io = new Server(server);
 const PORT = process.env.PORT || 5000;
 require('./utils/commissionScheduler');
-app.use(cors());
-
+const corsOptions = {
+    origin: '*', // Or '*' for public (if no cookies)
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+  };
+  app.use(cors(corsOptions));
+  app.options('*', cors(corsOptions));
 app.use(express.json());
 const timerIntervals = {
     "1min": 60 * 1000,
