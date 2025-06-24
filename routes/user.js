@@ -10,7 +10,6 @@ const router = express.Router();
 const { CloudinaryStorage } = require("multer-storage-cloudinary");
 const cloudinary = require("../config/cloudinary.config");
 
-
 // This for upload user profile image to cloudinary
 const storage = new CloudinaryStorage({
   cloudinary: cloudinary,
@@ -459,25 +458,16 @@ router.put('/user/password/:id', async (req, res) => {
   }
 });
 
-router.options('/:id/kyc', (req, res) => {
-  res.setHeader('Access-Control-Allow-Origin', 'https://rollix777.com');
-  res.setHeader('Access-Control-Allow-Methods', 'PUT, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-  res.sendStatus(204);
-});
+
 // upload aadhar front and back and pan image for kyc
 
-router.put('/:id/kyc',
+router.put("/:id/kyc", 
   kycUpload.fields([
     { name: "aadharFront", maxCount: 1 },
     { name: "aadharBack", maxCount: 1 },
     { name: "panImage", maxCount: 1 }
-  ]),
+  ]), 
   async (req, res) => {
-    res.setHeader('Access-Control-Allow-Origin', 'https://rollix777.com');
-    res.setHeader('Access-Control-Allow-Methods', 'PUT, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-
     const userId = req.params.id;
     const { kycstatus = 0 } = req.body;
 
@@ -541,7 +531,6 @@ router.put('/:id/kyc',
       res.status(500).json({ error: "Internal Server Error" });
     }
 });
-
 
 
 
