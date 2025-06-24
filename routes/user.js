@@ -13,7 +13,7 @@ const cloudinary = require("../config/cloudinary.config");
 const storage = new CloudinaryStorage({
   cloudinary: cloudinary,
   params: {
-  folder: "user_images",
+    folder: "user_images",
     allowed_formats: ["jpg", "png", "jpeg", "gif"],
     public_id: (req, file) => `${Date.now()}-${file.originalname.split('.')[0]}`,
   },
@@ -38,8 +38,8 @@ router.post('/register', async (req, res) => {
 
   // Validate mandatory fields
   if (!phoneNumber || !myReferralCode || !password) {
-    return res.status(400).json({ 
-      error: 'Phone number, referral code, and password are required fields' 
+    return res.status(400).json({
+      error: 'Phone number, referral code, and password are required fields'
     });
   }
 
@@ -54,8 +54,8 @@ router.post('/register', async (req, res) => {
     });
 
     if (existingUser) {
-      return res.status(400).json({ 
-        error: 'Phone number is already registered' 
+      return res.status(400).json({
+        error: 'Phone number is already registered'
       });
     }
 
@@ -86,13 +86,13 @@ router.post('/register', async (req, res) => {
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `;
     connection.query(query, [
-      username || null, 
-      name || null, 
-      email || null, 
-      hashedPassword, 
-      phoneNumber, 
-      myReferralCode, 
-      referredById, 
+      username || null,
+      name || null,
+      email || null,
+      hashedPassword,
+      phoneNumber,
+      myReferralCode,
+      referredById,
       kyc_note || null
     ], async (err, results) => {
       if (err) {
@@ -169,7 +169,7 @@ router.get("/referrals/:userId", async (req, res) => {
   try {
     // Get all referrals for this user up to level 5
     const referrals = await new Promise((resolve, reject) => {
-     const sql = `
+      const sql = `
           SELECT 
             u.id,
             u.name,
@@ -182,9 +182,9 @@ router.get("/referrals/:userId", async (req, res) => {
             (SELECT IFNULL(SUM(c.amount), 0) FROM referralcommissionhistory c WHERE c.user_id = ? AND c.referred_user_id = u.id AND c.credited = 0 ) AS pending_commission
             FROM referrals r JOIN users u ON r.referred_id = u.id WHERE r.referrer_id = ? ORDER BY r.level
         `;
-        const [referrerId] = [req.params.userId];
+      const [referrerId] = [req.params.userId];
 
-        connection.query(sql, [referrerId, referrerId], (err, results) => {
+      connection.query(sql, [referrerId, referrerId], (err, results) => {
         if (err) return reject(err);
         resolve(results);
       });
@@ -435,9 +435,11 @@ router.delete('/user/:id', async (req, res) => {
 router.patch('/user/:id', upload.single('image'), async (req, res) => {
   const userId = req.params.id;
   const { username, name, email, phone } = req.body;
+ 
 
   // Cloudinary returns full URL
   const imagePath = req.file ? req.file.path : null;
+
 
   try {
     const query = `
@@ -1448,127 +1450,177 @@ router.get('/transactions/:userId', async (req, res) => {
 router.get('/user-bet-stats/:userId', async (req, res) => {
   try {
     const { userId } = req.params;
+    let { page = 1, limit = 50 } = req.query;
 
-    // Validate input
     if (!userId || isNaN(userId)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid user ID"
-      });
+      return res.status(400).json({ success: false, message: "Invalid user ID" });
     }
 
-    // Query to get user's betting statistics
+    page = parseInt(page);
+    limit = parseInt(limit);
+    const offset = (page - 1) * limit;
+
+    // Main game stats query
     const statsQuery = `
-            SELECT 
-                COUNT(*) as total_bets,
-                SUM(amount) as total_bet_amount,
-                SUM(CASE 
-                    WHEN (bet_type = 'number' AND CAST(bet_value AS SIGNED) = r.result_number) OR
-                         (bet_type = 'color' AND bet_value = r.result_color) OR
-                         (bet_type = 'size' AND bet_value = r.result_size)
-                    THEN amount * 1.9
-                    ELSE 0  
-                END) as total_winnings,
-                COUNT(CASE 
-                    WHEN (bet_type = 'number' AND CAST(bet_value AS SIGNED) = r.result_number) OR
-                         (bet_type = 'color' AND bet_value = r.result_color) OR
-                         (bet_type = 'size' AND bet_value = r.result_size)
-                    THEN 1 
-                END) as total_wins,
-                SUM(CASE 
-                    WHEN bet_type = 'color' THEN amount
-                    ELSE 0 
-                END) as color_bets_amount,
-                SUM(CASE 
-                    WHEN bet_type = 'number' THEN amount
-                    ELSE 0 
-                END) as number_bets_amount,
-                SUM(CASE 
-                    WHEN bet_type = 'size' THEN amount
-                    ELSE 0 
-                END) as size_bets_amount
-            FROM bets b
-            LEFT JOIN result r ON b.period_number = r.period_number
-            WHERE b.user_id = ? AND b.status = 'processed'
-            GROUP BY b.user_id`;
+      SELECT 
+        COUNT(*) as total_bets,
+        SUM(amount) as total_bet_amount,
+        SUM(CASE 
+            WHEN (bet_type = 'number' AND CAST(bet_value AS SIGNED) = r.result_number) OR
+                 (bet_type = 'color' AND bet_value = r.result_color) OR
+                 (bet_type = 'size' AND bet_value = r.result_size)
+            THEN amount * 1.9
+            ELSE 0  
+        END) as total_winnings,
+        COUNT(CASE 
+            WHEN (bet_type = 'number' AND CAST(bet_value AS SIGNED) = r.result_number) OR
+                 (bet_type = 'color' AND bet_value = r.result_color) OR
+                 (bet_type = 'size' AND bet_value = r.result_size)
+            THEN 1 
+        END) as total_wins,
+        SUM(CASE WHEN bet_type = 'color' THEN amount ELSE 0 END) as color_bets_amount,
+        SUM(CASE WHEN bet_type = 'number' THEN amount ELSE 0 END) as number_bets_amount,
+        SUM(CASE WHEN bet_type = 'size' THEN amount ELSE 0 END) as size_bets_amount
+      FROM bets b
+      LEFT JOIN result r ON b.period_number = r.period_number
+      WHERE b.user_id = ? AND b.status = 'processed'
+      GROUP BY b.user_id
+    `;
 
-    // Get recent bets
+    // Paginated recent bets query
     const recentBetsQuery = `
-            SELECT 
-                b.period_number,
-                b.bet_type,
-                b.bet_value,
-                b.amount,
-                b.placed_at,
-                CASE 
-                    WHEN (bet_type = 'number' AND CAST(bet_value AS SIGNED) = r.result_number) OR
-                         (bet_type = 'color' AND bet_value = r.result_color) OR
-                         (bet_type = 'size' AND bet_value = r.result_size)
-                    THEN amount * 1.9
-                    ELSE 0 
-                END as winnings,
-                CASE 
-                    WHEN (bet_type = 'number' AND CAST(bet_value AS SIGNED) = r.result_number) OR
-                         (bet_type = 'color' AND bet_value = r.result_color) OR
-                         (bet_type = 'size' AND bet_value = r.result_size)
-                    THEN 'won'
-                    ELSE 'lost'
-                END as result
-            FROM bets b
-            LEFT JOIN result r ON b.period_number = r.period_number
-            WHERE b.user_id = ? AND b.status = 'processed'
-            ORDER BY b.placed_at DESC
-            LIMIT 10`;
+      SELECT 
+        b.period_number,
+        b.bet_type,
+        b.bet_value,
+        b.amount,
+        b.placed_at,
+        CASE 
+            WHEN (bet_type = 'number' AND CAST(bet_value AS SIGNED) = r.result_number) OR
+                 (bet_type = 'color' AND bet_value = r.result_color) OR
+                 (bet_type = 'size' AND bet_value = r.result_size)
+            THEN amount * 1.9
+            ELSE 0 
+        END as winnings,
+        CASE 
+            WHEN (bet_type = 'number' AND CAST(bet_value AS SIGNED) = r.result_number) OR
+                 (bet_type = 'color' AND bet_value = r.result_color) OR
+                 (bet_type = 'size' AND bet_value = r.result_size)
+            THEN 'won'
+            ELSE 'lost'
+        END as result
+      FROM bets b
+      LEFT JOIN result r ON b.period_number = r.period_number
+      WHERE b.user_id = ? AND b.status = 'processed'
+      ORDER BY b.placed_at DESC
+      LIMIT ? OFFSET ?
+    `;
 
-    // Execute both queries using connection instead of pool
-    const [stats, recentBets] = await Promise.all([
+    // Count total for pagination
+    const totalRecentBetsQuery = `
+      SELECT COUNT(*) AS total FROM bets
+      WHERE user_id = ? AND status = 'processed'
+    `;
+
+    // Turnover stats
+    const turnoverStatsQuery = `
+      SELECT 
+        COUNT(*) AS total_turnover_bets,
+        SUM(bet) AS total_turnover_amount,
+        SUM(CASE WHEN win > 0 THEN 1 ELSE 0 END) AS total_turnover_wins,
+        SUM(win) AS total_turnover_win_amount,
+        SUM(win - bet) AS turnover_profit_loss
+      FROM api_turnover
+      WHERE login = ?
+    `;
+
+    // Game-wise breakdown
+    const turnoverGameDistQuery = `
+      SELECT 
+        gameId,
+        COUNT(*) AS total_bets,
+        SUM(bet) AS total_bet_amount,
+        SUM(win) AS total_win_amount
+      FROM api_turnover
+      WHERE login = ?
+      GROUP BY gameId
+    `;
+
+    // Execute queries
+    const [stats, recentBets, totalRecentCount, turnoverStats, gameDistribution] = await Promise.all([
       new Promise((resolve, reject) => {
         connection.query(statsQuery, [userId], (err, results) => {
-          if (err) reject(err);
-          resolve(results[0]);
+          if (err) reject(err); else resolve(results[0]);
         });
       }),
       new Promise((resolve, reject) => {
-        connection.query(recentBetsQuery, [userId], (err, results) => {
-          if (err) reject(err);
-          resolve(results);
+        connection.query(recentBetsQuery, [userId, limit, offset], (err, results) => {
+          if (err) reject(err); else resolve(results);
+        });
+      }),
+      new Promise((resolve, reject) => {
+        connection.query(totalRecentBetsQuery, [userId], (err, results) => {
+          if (err) reject(err); else resolve(results[0]?.total || 0);
+        });
+      }),
+      new Promise((resolve, reject) => {
+        connection.query(turnoverStatsQuery, [userId], (err, results) => {
+          if (err) reject(err); else resolve(results[0]);
+        });
+      }),
+      new Promise((resolve, reject) => {
+        connection.query(turnoverGameDistQuery, [userId], (err, results) => {
+          if (err) reject(err); else resolve(results);
         });
       })
     ]);
 
-    if (!stats) {
-      return res.status(404).json({
-        success: false,
-        message: "No betting history found for this user"
-      });
-    }
-
-    const profitLoss = parseFloat(stats.total_winnings || 0) - parseFloat(stats.total_bet_amount || 0);
+    const profitLoss = parseFloat(stats?.total_winnings || 0) - parseFloat(stats?.total_bet_amount || 0);
+    const totalPages = Math.ceil(totalRecentCount / limit);
 
     res.json({
       success: true,
       statistics: {
-        total_bets: parseInt(stats.total_bets || 0),
-        total_bet_amount: parseFloat(stats.total_bet_amount || 0),
-        total_winnings: parseFloat(stats.total_winnings || 0),
-        total_wins: parseInt(stats.total_wins || 0),
-        win_rate: stats.total_bets ? ((stats.total_wins / stats.total_bets) * 100).toFixed(2) : "0.00",
+        total_bets: parseInt(stats?.total_bets || 0),
+        total_bet_amount: parseFloat(stats?.total_bet_amount || 0),
+        total_winnings: parseFloat(stats?.total_winnings || 0),
+        total_wins: parseInt(stats?.total_wins || 0),
+        win_rate: stats?.total_bets ? ((stats.total_wins / stats.total_bets) * 100).toFixed(2) : "0.00",
         profit_loss: profitLoss,
         bet_distribution: {
-          color: parseFloat(stats.color_bets_amount || 0),
-          number: parseFloat(stats.number_bets_amount || 0),
-          size: parseFloat(stats.size_bets_amount || 0)
+          color: parseFloat(stats?.color_bets_amount || 0),
+          number: parseFloat(stats?.number_bets_amount || 0),
+          size: parseFloat(stats?.size_bets_amount || 0)
         }
       },
-      recent_bets: recentBets.map(bet => ({
-        period_number: bet.period_number,
-        bet_type: bet.bet_type,
-        bet_value: bet.bet_value,
-        amount: parseFloat(bet.amount),
-        winnings: parseFloat(bet.winnings),
-        result: bet.result,
-        placed_at: bet.placed_at
-      }))
+      recent_bets: {
+        page,
+        limit,
+        total: totalRecentCount,
+        totalPages,
+        data: recentBets.map(bet => ({
+          period_number: bet.period_number,
+          bet_type: bet.bet_type,
+          bet_value: bet.bet_value,
+          amount: parseFloat(bet.amount),
+          winnings: parseFloat(bet.winnings),
+          result: bet.result,
+          placed_at: bet.placed_at
+        }))
+      },
+      other_game_stats: {
+        total_turnover_bets: parseInt(turnoverStats?.total_turnover_bets || 0),
+        total_turnover_amount: parseFloat(turnoverStats?.total_turnover_amount || 0),
+        total_turnover_wins: parseInt(turnoverStats?.total_turnover_wins || 0),
+        total_turnover_win_amount: parseFloat(turnoverStats?.total_turnover_win_amount || 0),
+        turnover_profit_loss: parseFloat(turnoverStats?.turnover_profit_loss || 0),
+        game_distribution: gameDistribution.map(row => ({
+          gameId: row.gameId,
+          total_bets: parseInt(row.total_bets),
+          total_bet_amount: parseFloat(row.total_bet_amount),
+          total_win_amount: parseFloat(row.total_win_amount)
+        }))
+      }
     });
 
   } catch (error) {
@@ -1580,6 +1632,8 @@ router.get('/user-bet-stats/:userId', async (req, res) => {
     });
   }
 });
+
+
 
 //================ Get KYC Details by ID =================
 router.get('/kyc-details/:userId', async (req, res) => {
@@ -1639,7 +1693,7 @@ router.get('/kyc-details/:userId', async (req, res) => {
           kyc_status: {
             code: kycDetails.kycstatus,
             text: kycDetails.status_text,
-            note:kycDetails.kyc_note || null
+            note: kycDetails.kyc_note || null
 
           },
           documents: {
