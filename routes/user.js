@@ -9,12 +9,7 @@ const fs = require('fs');
 const router = express.Router();
 const { CloudinaryStorage } = require("multer-storage-cloudinary");
 const cloudinary = require("../config/cloudinary.config");
-router.options('/kyc/approve/:userId', (req, res) => {
-  res.setHeader('Access-Control-Allow-Origin', 'https://rollix777.com');
-  res.setHeader('Access-Control-Allow-Methods', 'PUT, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-  res.sendStatus(204); // No content
-});
+
 
 // This for upload user profile image to cloudinary
 const storage = new CloudinaryStorage({
