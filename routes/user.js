@@ -9,6 +9,13 @@ const fs = require('fs');
 const router = express.Router();
 const { CloudinaryStorage } = require("multer-storage-cloudinary");
 const cloudinary = require("../config/cloudinary.config");
+const {
+  generateAccessToken,
+  generateRefreshToken,
+  verifyAccessToken,
+  verifyRefreshToken
+} = require('../utils/jwt');
+const authenticateToken = require('../middleware/authenticateToken');
 
 // This for upload user profile image to cloudinary
 const storage = new CloudinaryStorage({
@@ -102,7 +109,7 @@ router.post('/register', async (req, res) => {
     ], async (err, results) => {
       if (err) {
         console.log(err);
-        return res.status(500).json({ error: 'Database error' });
+        return res.status(500).json({ error: err.message || 'Error registering user' });
       }
 
       const userId = results.insertId;
@@ -211,61 +218,199 @@ router.get("/referrals/:userId", async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 });
-// User login
-router.post('/login', async (req, res) => {
-  // Destructure only email and password from the request body
-  const { email, password } = req.body;
 
-  // Log the received email/username/phone and password (for debugging)
+// User login
+// router.post('/login', async (req, res) => {
+//   // Destructure only email and password from the request body
+//   const { email, password } = req.body;
+
+//   // Log the received email/username/phone and password (for debugging)
+//   console.log('Attempting login with:', { identifier: email, passwordProvided: !!password });
+
+//   // Check if both email/username/phone value and password are provided
+//   if (!email || !password) {
+//     console.log('Login failed: Missing identifier or password'); // Log failure reason
+//     return res.status(400).json({ error: 'Email/Username/phone and password are required' });
+//   }
+
+//   try {
+//     // Query to find the user by matching the provided value against email, username, OR phone
+//     const query = "SELECT * FROM users WHERE email = ? OR username = ? OR phone = ?";
+//     connection.query(query, [email, email, email], async (err, results) => {
+//       if (err) return res.status(500).json({ error: 'Database query error' });
+//       if (results.length === 0) return res.status(404).json({ error: 'User not found' });
+
+//       const user = results[0];
+
+//       const isMatch = await bcrypt.compare(password, user.password);
+//       if (!isMatch) return res.status(401).json({ error: 'Invalid credentials' });
+
+//       // Create session (deletes old one and inserts new one)
+//       const token = await createSession(user.id);
+
+//       // Fetch wallet details for the logged-in user
+//       const walletQuery = "SELECT * FROM wallet WHERE userId = ?";
+//       connection.query(walletQuery, [user.id], (err, walletResults) => {
+//         if (err) return res.status(500).json({ error: 'Error fetching wallet data' });
+
+//         // Send the user profile and wallet data in the response
+//         res.json({
+//           token,
+//           user: {
+//             id: user.id,
+//             username: user.username,
+//             email: user.email,
+//             phone: user.phone,
+//             dob: user.dob,
+//             referalCode: user.my_referral_code
+//           },
+//           wallet: walletResults
+//         });
+//       });
+//     });
+//   } catch (error) {
+//     console.error('Unexpected error during login:', error); // Log unexpected error
+//     res.status(500).json({ error: 'Error logging in user' });
+//   }
+// });
+
+//========== login with refresh token ==============
+router.post('/login', async (req, res) => {
+  const { email, password } = req.body;
   console.log('Attempting login with:', { identifier: email, passwordProvided: !!password });
 
-  // Check if both email/username/phone value and password are provided
   if (!email || !password) {
-    console.log('Login failed: Missing identifier or password'); // Log failure reason
-    return res.status(400).json({ error: 'Email/Username/phone and password are required' });
+    console.log('Login failed: Missing identifier or password');
+    return res.status(400).json({ error: 'Email/Username/ and password are required' });
   }
 
   try {
-    // Query to find the user by matching the provided value against email, username, OR phone
     const query = "SELECT * FROM users WHERE email = ? OR username = ? OR phone = ?";
     connection.query(query, [email, email, email], async (err, results) => {
       if (err) return res.status(500).json({ error: 'Database query error' });
       if (results.length === 0) return res.status(404).json({ error: 'User not found' });
 
       const user = results[0];
-
       const isMatch = await bcrypt.compare(password, user.password);
       if (!isMatch) return res.status(401).json({ error: 'Invalid credentials' });
 
-      // Create session (deletes old one and inserts new one)
-      const token = await createSession(user.id);
+      // Generate tokens
+      const accessToken = generateAccessToken(user);
+      const refreshToken = generateRefreshToken(user);
 
-      // Fetch wallet details for the logged-in user
-      const walletQuery = "SELECT * FROM wallet WHERE userId = ?";
-      connection.query(walletQuery, [user.id], (err, walletResults) => {
-        if (err) return res.status(500).json({ error: 'Error fetching wallet data' });
+      // Store refresh token in DB
+      const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
+      connection.query(
+        'INSERT INTO refresh_tokens (user_id, token, expires_at) VALUES (?, ?, ?)',
+        [user.id, refreshToken, expiresAt],
+        (err) => {
+          if (err) return res.status(500).json({ error: 'Error saving refresh token' });
 
-        // Send the user profile and wallet data in the response
-        res.json({
-          token,
-          user: {
-            id: user.id,
-            username: user.username,
-            email: user.email,
-            phone: user.phone,
-            dob: user.dob,
-            referalCode: user.my_referral_code
-          },
-          wallet: walletResults
-        });
-      });
+          // Fetch wallet details for the logged-in user
+          const walletQuery = "SELECT * FROM wallet WHERE userId = ?";
+          connection.query(walletQuery, [user.id], (err, walletResults) => {
+            if (err) return res.status(500).json({ error: 'Error fetching wallet data' });
+
+            res.json({
+              accessToken,
+              refreshToken,
+              user: {
+                id: user.id,
+                username: user.username,
+                email: user.email,
+                phone: user.phone,
+                dob: user.dob,
+                referalCode: user.my_referral_code
+              },
+              wallet: walletResults
+            });
+          });
+        }
+      );
     });
   } catch (error) {
-    console.error('Unexpected error during login:', error); // Log unexpected error
+    console.error('Unexpected error during login:', error);
     res.status(500).json({ error: 'Error logging in user' });
   }
 });
 
+// ======= Generate access token using REFRESH TOKEN =======
+router.post('/refresh', (req, res) => {
+  const { refreshToken } = req.body;
+  if (!refreshToken) return res.status(400).json({ error: 'Refresh token required' });
+
+  // Auto-clean expired refresh tokens before issuing new one
+   connection.query(
+  'DELETE FROM refresh_tokens WHERE expires_at < NOW()',
+  (err) => {
+    if (err) 
+      console.error('Expired tokens cleanup error:', err);
+   }
+  );
+
+
+  // Check if refresh token exists in DB and is not expired
+  connection.query(
+    'SELECT * FROM refresh_tokens WHERE token = ? AND expires_at > NOW()',
+    [refreshToken],
+    (err, results) => {
+      if (err) return res.status(500).json({ error: 'Database error' });
+      if (!results.length) return res.status(403).json({ error: 'Invalid refresh token' });
+
+      try {
+        const user = verifyRefreshToken(refreshToken);
+        const accessToken = generateAccessToken(user);
+        res.json({ accessToken });
+      } catch (err) {
+        return res.status(403).json({ error: 'Invalid or expired refresh token' });
+      }
+    }
+  );
+});
+
+
+
+// ============= LOGOUT =================
+
+router.post('/logout', (req, res) => {
+  const { refreshToken } = req.body;
+  if (!refreshToken) {
+    return res.status(400).json({ error: 'Refresh token required' });
+  }
+
+  //  Step 1: Check in DB
+  connection.query(
+    'SELECT * FROM refresh_tokens WHERE token = ?',
+    [refreshToken],
+    (err, results) => {
+      if (err) {
+        return res.status(500).json({ error: 'Database error' });
+      }
+
+      if (results.length === 0) {
+        return res.status(403).json({ error: 'Invalid refresh token' });
+      }
+
+      //  Step 2: Check expiry manually OR using verify()
+      try {
+        verifyRefreshToken(refreshToken); // throws error if invalid/expired
+      } catch (err) {
+        return res.status(403).json({ error: 'Expired or invalid token' });
+      }
+
+      //  Step 3: Delete from DB if everything is valid
+      connection.query(
+        'DELETE FROM refresh_tokens WHERE token = ?',
+        [refreshToken],
+        (err) => {
+          if (err) return res.status(500).json({ error: 'Database error during logout' });
+
+          res.json({ message: 'Logged out successfully' });
+        }
+      );
+    }
+  );
+});
 
 // Get all users
 router.get('/allusers', async (req, res) => {
@@ -301,7 +446,7 @@ router.get('/allusers', async (req, res) => {
 });
 
 //Get one user by id
-router.get('/user/:id', async (req, res) => {
+router.get('/user/:id', authenticateToken, async (req, res) => {
   const userId = req.params.id;
   console.log(userId, "name");
   try {
@@ -393,7 +538,7 @@ router.delete('/user/:id', async (req, res) => {
 router.patch('/user/:id', upload.single('image'), async (req, res) => {
   const userId = req.params.id;
   const { username, name, email, phone } = req.body;
- 
+
 
   // Cloudinary returns full URL
   const imagePath = req.file ? req.file.path : null;
@@ -461,12 +606,12 @@ router.put('/user/password/:id', async (req, res) => {
 
 // upload aadhar front and back and pan image for kyc
 
-router.put("/:id/kyc", 
+router.put("/:id/kyc",
   kycUpload.fields([
     { name: "aadharFront", maxCount: 1 },
     { name: "aadharBack", maxCount: 1 },
     { name: "panImage", maxCount: 1 }
-  ]), 
+  ]),
   async (req, res) => {
     const userId = req.params.id;
     const { kycstatus = 0 } = req.body;
@@ -530,7 +675,7 @@ router.put("/:id/kyc",
       console.error("Server error:", err);
       res.status(500).json({ error: "Internal Server Error" });
     }
-});
+  });
 
 
 
