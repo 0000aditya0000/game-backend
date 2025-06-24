@@ -464,94 +464,87 @@ router.put('/user/password/:id', async (req, res) => {
   }
 });
 
-
-// upload aadhar front and back and pan image for kyc
-
-router.put('/kyc/approve/:userId', async (req, res) => {
+router.options('/:id/kyc', (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', 'https://rollix777.com');
   res.setHeader('Access-Control-Allow-Methods', 'PUT, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.sendStatus(204);
+});
+// upload aadhar front and back and pan image for kyc
 
-  try {
-    const userId = req.params.userId;
-    const { status, note } = req.body;
+router.put('/:id/kyc',
+  kycUpload.fields([
+    { name: "aadharFront", maxCount: 1 },
+    { name: "aadharBack", maxCount: 1 },
+    { name: "panImage", maxCount: 1 }
+  ]),
+  async (req, res) => {
+    res.setHeader('Access-Control-Allow-Origin', 'https://rollix777.com');
+    res.setHeader('Access-Control-Allow-Methods', 'PUT, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
-    if (![0, 1, 2].includes(Number(status))) {
+    const userId = req.params.id;
+    const { kycstatus = 0 } = req.body;
+
+    const aadharFront = req.files?.aadharFront?.[0]?.path || null;
+    const aadharBack = req.files?.aadharBack?.[0]?.path || null;
+    const pan = req.files?.panImage?.[0]?.path || null;
+
+    if (!aadharFront && !aadharBack && !pan) {
       return res.status(400).json({
-        success: false,
-        message: "Invalid status value. Use 0 for pending, 1 for approved, 2 for rejected"
+        error: "At least one image (Aadhar Front, Back, or PAN) is required"
       });
     }
 
-    const checkQuery = `SELECT aadhar_front, aadhar_back, pan, kycstatus FROM users WHERE id = ?`;
+    try {
+      const fieldsToUpdate = [];
+      const values = [];
 
-    const checkUser = () => new Promise((resolve, reject) => {
-      connection.query(checkQuery, [userId], (err, results) => {
-        if (err) return reject(err);
-        resolve(results);
-      });
-    });
-
-    const results = await checkUser();
-
-    if (!results || results.length === 0) {
-      return res.status(404).json({
-        success: false,
-        message: "User not found"
-      });
-    }
-
-    const user = results[0];
-
-    if (!user.aadhar_front && !user.pan) {
-      return res.status(400).json({
-        success: false,
-        message: "Cannot process KYC. No documents uploaded",
-        missing_documents: {
-          aadhar: !user.aadhar_front,
-          pan: !user.pan
-        }
-      });
-    }
-
-    const updateQuery = `
-      UPDATE users 
-      SET kycstatus = ?, kyc_note = ?
-      WHERE id = ?
-    `;
-
-    const updateStatus = () => new Promise((resolve, reject) => {
-      connection.query(updateQuery, [status, note || null, userId], (err, result) => {
-        if (err) return reject(err);
-        resolve(result);
-      });
-    });
-
-    await updateStatus();
-
-    res.json({
-      success: true,
-      message: `KYC ${status === 1 ? 'approved' : status === 2 ? 'rejected' : 'set to pending'} successfully`,
-      data: {
-        user_id: userId,
-        new_status: status,
-        status_text: status === 1 ? 'Approved' : status === 2 ? 'Rejected' : 'Pending',
-        documents: {
-          aadhar: user.aadhar_front ? "Submitted" : "Not submitted",
-          pan: user.pan ? "Submitted" : "Not submitted"
-        },
-        note: note || null
+      if (aadharFront) {
+        fieldsToUpdate.push("aadhar_front = ?");
+        values.push(aadharFront);
       }
-    });
+      if (aadharBack) {
+        fieldsToUpdate.push("aadhar_back = ?");
+        values.push(aadharBack);
+      }
+      if (pan) {
+        fieldsToUpdate.push("pan = ?");
+        values.push(pan);
+      }
 
-  } catch (error) {
-    console.error('Error processing KYC:', error);
-    res.status(500).json({
-      success: false,
-      message: "Internal server error",
-      error: error.message
-    });
-  }
+      fieldsToUpdate.push("kycstatus = ?");
+      values.push(kycstatus);
+      values.push(userId);
+
+      const query = `
+        UPDATE users 
+        SET ${fieldsToUpdate.join(", ")} 
+        WHERE id = ?
+      `;
+
+      connection.query(query, values, (err, results) => {
+        if (err) {
+          console.error("Database query error:", err);
+          return res.status(500).json({ error: "Database error" });
+        }
+
+        if (results.affectedRows === 0) {
+          return res.status(404).json({ error: "User not found" });
+        }
+
+        res.json({
+          message: "KYC updated successfully",
+          aadharFront: aadharFront || "No Change",
+          aadharBack: aadharBack || "No Change",
+          pan: pan || "No Change",
+          kycstatus
+        });
+      });
+    } catch (err) {
+      console.error("Server error:", err);
+      res.status(500).json({ error: "Internal Server Error" });
+    }
 });
 
 
