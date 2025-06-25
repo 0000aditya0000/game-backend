@@ -505,86 +505,161 @@ router.put(
 );
 
 
-// upload aadhar front and back and pan image for kyc
 
-router.put(
-  "/:id/kyc",
-  upload.fields([
-    { name: "aadharFront", maxCount: 1 },
-    { name: "aadharBack", maxCount: 1 },
-    { name: "panImage", maxCount: 1 },
-  ]),
-  async (req, res) => {
-    const userId = req.params.id;
-    const { kycstatus = 0 } = req.body;
 
-    console.log("Files received in request:", req.files);
+//==== upload aadhar front and back and pan image for kyc ====
 
-    const aadharFront = req.files?.aadharFront?.[0]?.filename || null;
-    const aadharBack = req.files?.aadharBack?.[0]?.filename || null;
-    const pan = req.files?.panImage?.[0]?.filename || null;
+// router.put(
+//   "/:id/kyc",
+//   upload.fields([
+//     { name: "aadharFront", maxCount: 1 },
+//     { name: "aadharBack", maxCount: 1 },
+//     { name: "panImage", maxCount: 1 },
+//   ]),
+//   async (req, res) => {
+//     const userId = req.params.id;
+//     const { kycstatus = 0 } = req.body;
 
-    if (!aadharFront && !aadharBack && !pan) {
-      return res.status(400).json({
-        error: "At least one image (Aadhar Front, Back, or PAN) is required",
-      });
-    }
+//     console.log("Files received in request:", req.files);
 
-    try {
-      const fieldsToUpdate = [];
-      const values = [];
+//     const aadharFront = req.files?.aadharFront?.[0]?.filename || null;
+//     const aadharBack = req.files?.aadharBack?.[0]?.filename || null;
+//     const pan = req.files?.panImage?.[0]?.filename || null;
 
-      if (aadharFront) {
-        fieldsToUpdate.push("aadhar_front = ?");
-        values.push(aadharFront);
-      }
-      if (aadharBack) {
-        fieldsToUpdate.push("aadhar_back = ?");
-        values.push(aadharBack);
-      }
-      if (pan) {
-        fieldsToUpdate.push("pan = ?");
-        values.push(pan);
-      }
+//     if (!aadharFront && !aadharBack && !pan) {
+//       return res.status(400).json({
+//         error: "At least one image (Aadhar Front, Back, or PAN) is required",
+//       });
+//     }
 
-      fieldsToUpdate.push("kycstatus = ?");
-      values.push(kycstatus);
-      values.push(userId);
+//     try {
+//       const fieldsToUpdate = [];
+//       const values = [];
 
-      const query = `
-        UPDATE users 
-        SET ${fieldsToUpdate.join(", ")} 
-        WHERE id = ?
-      `;
+//       if (aadharFront) {
+//         fieldsToUpdate.push("aadhar_front = ?");
+//         values.push(aadharFront);
+//       }
+//       if (aadharBack) {
+//         fieldsToUpdate.push("aadhar_back = ?");
+//         values.push(aadharBack);
+//       }
+//       if (pan) {
+//         fieldsToUpdate.push("pan = ?");
+//         values.push(pan);
+//       }
 
-      console.log("Generated Query:", query);
-      console.log("Query Values:", values);
+//       fieldsToUpdate.push("kycstatus = ?");
+//       values.push(kycstatus);
+//       values.push(userId);
 
-      connection.query(query, values, (err, results) => {
-        if (err) {
-          console.error("Database query error:", err);
-          return res.status(500).json({ error: "Database query error" });
-        }
+//       const query = `
+//         UPDATE users 
+//         SET ${fieldsToUpdate.join(", ")} 
+//         WHERE id = ?
+//       `;
 
-        if (results.affectedRows === 0) {
-          return res.status(404).json({ error: "User not found" });
-        }
+//       console.log("Generated Query:", query);
+//       console.log("Query Values:", values);
 
-        res.json({
-          message: "KYC details updated successfully",
-          aadharFront: aadharFront || "No change",
-          aadharBack: aadharBack || "No change",
-          pan: pan || "No change",
-          kycstatus,
-        });
-      });
-    } catch (error) {
-      console.error("Error updating KYC details:", error);
-      res.status(500).json({ error: "Internal server error" });
-    }
+//       connection.query(query, values, (err, results) => {
+//         if (err) {
+//           console.error("Database query error:", err);
+//           return res.status(500).json({ error: "Database query error" });
+//         }
+
+//         if (results.affectedRows === 0) {
+//           return res.status(404).json({ error: "User not found" });
+//         }
+
+//         res.json({
+//           message: "KYC details updated successfully",
+//           aadharFront: aadharFront || "No change",
+//           aadharBack: aadharBack || "No change",
+//           pan: pan || "No change",
+//           kycstatus,
+//         });
+//       });
+//     } catch (error) {
+//       console.error("Error updating KYC details:", error);
+//       res.status(500).json({ error: "Internal server error" });
+//     }
+//   }
+// );
+  
+
+//===== modify kyc api =================
+router.put("/:id/kyc", async (req, res) => {
+  const userId = req.params.id;
+  const {
+    aadhar_front = null,
+    aadhar_back = null,
+    pan = null,
+    kycstatus = 0,
+  } = req.body;
+
+  if (!aadhar_front && !aadhar_back && !pan) {
+    return res.status(400).json({
+      success: false,
+      message: "At least one URL (Aadhar Front, Back, or PAN) is required",
+    });
   }
-);
 
+  try {
+    const fieldsToUpdate = [];
+    const values = [];
+
+    if (aadhar_front) {
+      fieldsToUpdate.push("aadhar_front = ?");
+      values.push(aadhar_front);
+    }
+    if (aadhar_back) {
+      fieldsToUpdate.push("aadhar_back = ?");
+      values.push(aadhar_back);
+    }
+    if (pan) {
+      fieldsToUpdate.push("pan = ?");
+      values.push(pan);
+    }
+
+    fieldsToUpdate.push("kycstatus = ?");
+    values.push(kycstatus);
+
+    values.push(userId); // for WHERE clause
+
+    const query = `
+      UPDATE users 
+      SET ${fieldsToUpdate.join(", ")} 
+      WHERE id = ?
+    `;
+
+    console.log("Generated Query:", query);
+    console.log("Values:", values);
+
+    connection.query(query, values, (err, results) => {
+      if (err) {
+        console.error("Database query error:", err);
+        return res.status(500).json({ success: false, message: "DB Error" });
+      }
+
+      if (results.affectedRows === 0) {
+        return res.status(404).json({ success: false, message: "User not found" });
+      }
+
+      res.json({
+        success: true,
+        message: "KYC details updated successfully",
+        aadhar_front: aadhar_front || "No change",
+        aadhar_back: aadhar_back || "No change",
+        pan: pan || "No change",
+        kycstatus,
+      });
+    });
+  } catch (error) {
+    console.error("Error updating KYC:", error);
+    res.status(500).json({ success: false, message: "Internal server error" });
+  }
+});
 
 
 
