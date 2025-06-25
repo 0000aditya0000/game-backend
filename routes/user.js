@@ -249,6 +249,7 @@ router.post('/login', async (req, res) => {
 });
 
 
+
 // Get all users
 router.get('/allusers', async (req, res) => {
   try {
@@ -1907,6 +1908,214 @@ router.get('/game-transactions/:userId', async (req, res) => {
     });
   }
 });
+
+// Get user's successful withdrawals and deposits in a date range
+router.get('/report/transactions/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    let { start, end } = req.query;
+
+    // Validate input
+    if (!userId || isNaN(userId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Valid userId is required"
+      });
+    }
+
+    if (!start || !end) {
+      return res.status(400).json({
+        success: false,
+        message: "Start and end date are required (YYYY-MM-DD)"
+      });
+    }
+
+    start = `${start} 00:00:00`;
+    end = `${end} 23:59:59`;
+
+    // --- DEPOSIT QUERY (with cryptoname = INR) ---
+    const depositQuery = `
+      SELECT 
+        'deposit' AS type,
+        d.id,
+        d.userId,
+        d.amount,
+        d.cryptoname,
+        d.created_at AS date,
+        u.name,
+        u.email
+      FROM deposits d
+      LEFT JOIN users u ON d.userId = u.id
+      WHERE d.userId = ? AND d.cryptoname = 'INR'
+        AND d.created_at >= ? AND d.created_at <= ?
+      ORDER BY d.created_at DESC
+    `;
+
+    // --- WITHDRAWAL QUERY (with cryptoname = INR) ---
+    const withdrawalQuery = `
+      SELECT 
+        'withdrawal' AS type,
+        w.id,
+        w.userId,
+        w.balance AS amount,
+        w.cryptoname,
+        w.createdOn AS date,
+        u.name,
+        u.email
+      FROM withdrawl w
+      LEFT JOIN users u ON w.userId = u.id
+      WHERE w.userId = ? AND w.cryptoname = 'INR'
+        AND (w.status = 1 OR w.status = '1')
+        AND w.createdOn >= ? AND w.createdOn <= ?
+      ORDER BY w.createdOn DESC
+    `;
+
+    const [deposits, withdrawals] = await Promise.all([
+      new Promise((resolve, reject) => {
+        connection.query(depositQuery, [userId, start, end], (err, results) => {
+          if (err) return reject(err);
+          resolve(results);
+        });
+      }),
+      new Promise((resolve, reject) => {
+        connection.query(withdrawalQuery, [userId, start, end], (err, results) => {
+          if (err) return reject(err);
+          resolve(results);
+        });
+      })
+    ]);
+
+    const allTransactions = [...deposits, ...withdrawals].sort(
+      (a, b) => new Date(b.date) - new Date(a.date)
+    );
+
+    //  response formatting
+    res.json({
+      success: true,
+      userId: parseInt(userId),
+      start_date: start,
+      end_date: end,
+      total_deposits: deposits.length,
+      total_withdrawals: withdrawals.length,
+      total_transactions: allTransactions.length,
+      transactions: allTransactions.map(txn => ({
+        ...txn,
+        name: txn.name || 'Unknown User',
+        email: txn.email || 'N/A'
+      }))
+    });
+  } catch (error) {
+    console.error('Error generating transaction report:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error generating transaction report',
+      error: error.message
+    });
+  }
+});
+
+
+// Get all users' successful withdrawals and deposits in a date range
+router.get('/report/transactions', async (req, res) => {
+  try {
+    let { start, end } = req.query;
+
+    if (!start || !end) {
+      return res.status(400).json({
+        success: false,
+        message: "Start and end date are required (YYYY-MM-DD)"
+      });
+    }
+
+    start = `${start} 00:00:00`;
+    end = `${end} 23:59:59`;
+
+    console.log('Start Date:', start);
+    console.log('End Date:', end);
+
+    // --- DEPOSIT QUERY (filtered by cryptoname = INR) ---
+    const depositQuery = `
+      SELECT 
+        'deposit' AS type,
+        d.id,
+        d.userId,
+        d.amount,
+        d.cryptoname,
+        d.created_at AS date,
+        u.name,
+        u.email
+      FROM deposits d
+      LEFT JOIN users u ON d.userId = u.id
+      WHERE d.cryptoname = 'INR'
+        AND d.created_at >= ? AND d.created_at <= ?
+      ORDER BY d.created_at DESC
+    `;
+
+    // --- WITHDRAWAL QUERY (filtered by cryptoname = INR) ---
+    const withdrawalQuery = `
+      SELECT 
+        'withdrawal' AS type,
+        w.id,
+        w.userId,
+        w.balance AS amount,
+        w.cryptoname,
+        w.createdOn AS date,
+        u.name,
+        u.email
+      FROM withdrawl w
+      LEFT JOIN users u ON w.userId = u.id
+      WHERE w.cryptoname = 'INR'
+        AND (w.status = 1 OR w.status = '1')
+        AND w.createdOn >= ? AND w.createdOn <= ?
+      ORDER BY w.createdOn DESC
+    `;
+
+    const [deposits, withdrawals] = await Promise.all([
+      new Promise((resolve, reject) => {
+        connection.query(depositQuery, [start, end], (err, results) => {
+          if (err) return reject(err);
+          console.log('Deposit Results:', results.length);
+          resolve(results);
+        });
+      }),
+      new Promise((resolve, reject) => {
+        connection.query(withdrawalQuery, [start, end], (err, results) => {
+          if (err) return reject(err);
+          console.log('Withdrawal Results:', results.length);
+          resolve(results);
+        });
+      })
+    ]);
+
+    const allTransactions = [...deposits, ...withdrawals].sort(
+      (a, b) => new Date(b.date) - new Date(a.date)
+    );
+
+    res.json({
+      success: true,
+      start_date: start,
+      end_date: end,
+      total_deposits: deposits.length,
+      total_withdrawals: withdrawals.length,
+      total_transactions: allTransactions.length,
+      transactions: allTransactions.map(txn => ({
+        ...txn,
+        name: txn.name || 'Unknown User',
+        email: txn.email || 'N/A'
+      }))
+    });
+  } catch (error) {
+    console.error('Error generating transaction report:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error generating transaction report',
+      error: error.message
+    });
+  }
+});
+
+
+
 
 
 module.exports = router;
