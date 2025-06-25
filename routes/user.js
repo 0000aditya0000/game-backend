@@ -2082,7 +2082,7 @@ router.get('/game-transactions/:userId', async (req, res) => {
   }
 });
 
-// Get user's successful withdrawals and deposits in a date range
+//===== Get user's successful withdrawals and deposits in a date range ===
 router.get('/report/transactions/:userId', async (req, res) => {
   try {
     const { userId } = req.params;
@@ -2188,7 +2188,7 @@ router.get('/report/transactions/:userId', async (req, res) => {
 });
 
 
-// Get all users' successful withdrawals and deposits in a date range
+// ======== Get all users' successful withdrawals and deposits in a date range=====
 router.get('/report/transactions', async (req, res) => {
   try {
     let { start, end } = req.query;
@@ -2203,10 +2203,7 @@ router.get('/report/transactions', async (req, res) => {
     start = `${start} 00:00:00`;
     end = `${end} 23:59:59`;
 
-    console.log('Start Date:', start);
-    console.log('End Date:', end);
-
-    // --- DEPOSIT QUERY (filtered by cryptoname = INR) ---
+    // --- DEPOSIT QUERY (with phone) ---
     const depositQuery = `
       SELECT 
         'deposit' AS type,
@@ -2216,7 +2213,8 @@ router.get('/report/transactions', async (req, res) => {
         d.cryptoname,
         d.created_at AS date,
         u.name,
-        u.email
+        u.email,
+        u.phone
       FROM deposits d
       LEFT JOIN users u ON d.userId = u.id
       WHERE d.cryptoname = 'INR'
@@ -2224,7 +2222,7 @@ router.get('/report/transactions', async (req, res) => {
       ORDER BY d.created_at DESC
     `;
 
-    // --- WITHDRAWAL QUERY (filtered by cryptoname = INR) ---
+    // --- WITHDRAWAL QUERY (with phone) ---
     const withdrawalQuery = `
       SELECT 
         'withdrawal' AS type,
@@ -2234,7 +2232,8 @@ router.get('/report/transactions', async (req, res) => {
         w.cryptoname,
         w.createdOn AS date,
         u.name,
-        u.email
+        u.email,
+        u.phone
       FROM withdrawl w
       LEFT JOIN users u ON w.userId = u.id
       WHERE w.cryptoname = 'INR'
@@ -2247,14 +2246,12 @@ router.get('/report/transactions', async (req, res) => {
       new Promise((resolve, reject) => {
         connection.query(depositQuery, [start, end], (err, results) => {
           if (err) return reject(err);
-          console.log('Deposit Results:', results.length);
           resolve(results);
         });
       }),
       new Promise((resolve, reject) => {
         connection.query(withdrawalQuery, [start, end], (err, results) => {
           if (err) return reject(err);
-          console.log('Withdrawal Results:', results.length);
           resolve(results);
         });
       })
@@ -2274,9 +2271,11 @@ router.get('/report/transactions', async (req, res) => {
       transactions: allTransactions.map(txn => ({
         ...txn,
         name: txn.name || 'Unknown User',
-        email: txn.email || 'N/A'
+        email: txn.email || 'N/A',
+        phone: txn.phone || 'N/A'
       }))
     });
+
   } catch (error) {
     console.error('Error generating transaction report:', error);
     res.status(500).json({
