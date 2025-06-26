@@ -645,7 +645,7 @@ router.put("/:id/kyc", async (req, res) => {
       if (results.affectedRows === 0) {
         return res.status(404).json({ success: false, message: "User not found" });
       }
-
+  
       res.json({
         success: true,
         message: "KYC details updated successfully",
@@ -1692,7 +1692,8 @@ router.put('/kyc/approve/:userId', async (req, res) => {
         success: false,
         message: "Cannot process KYC. No documents uploaded",
         missing_documents: {
-          aadhar: !user.aadhar_front,
+          aadhar_front: !user.aadhar_front,
+          aadhar_back: !user.aadhar_back,
           pan: !user.pan
         }
       });
