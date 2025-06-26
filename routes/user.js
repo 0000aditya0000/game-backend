@@ -1756,9 +1756,6 @@ router.get('/pending-kyc', async (req, res) => {
     const limit = 20;
     const offset = (page - 1) * limit;
 
-    // Get server URL from request object
-    const serverUrl = `${req.protocol}://${req.get('host')}`;
-
     // Validate status parameter
     if (![0, 1, 2, 3].includes(status)) {
       return res.status(400).json({
@@ -1853,9 +1850,9 @@ router.get('/pending-kyc', async (req, res) => {
               text: statusText[user.kycstatus]
             },
             documents: {
-              aadharfront: user.aadhar_front ? `${serverUrl}/uploads/${user.aadhar_front}` : null,
-              aadharback: user.aadhar_back ? `${serverUrl}/uploads/${user.aadhar_back}` : null,
-              pan: user.pan ? `${serverUrl}/uploads/${user.pan}` : null
+              aadharfront: user.aadhar_front ? `${user.aadhar_front}` : null,
+              aadharback: user.aadhar_back ? `${user.aadhar_back}` : null,
+              pan: user.pan ? `${user.pan}` : null
             }
           }))
         });
