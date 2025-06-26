@@ -150,11 +150,7 @@ router.get('/admin/all', async (req, res) => {
         }
 
         // Get total count
-        const countQuery = `
-            SELECT COUNT(*) as total 
-            FROM user_queries 
-            WHERE ${whereClause}
-        `;
+        const countQuery = `SELECT COUNT(*) as total FROM user_queries WHERE ${whereClause}`;
 
         connection.query(countQuery, queryParams, (countErr, countResult) => {
             if (countErr) {
@@ -167,10 +163,9 @@ router.get('/admin/all', async (req, res) => {
             const totalQueries = countResult[0].total;
             const totalPages = Math.ceil(totalQueries / limit);
 
-            // Get paginated results
+            // Get queries with comment count
             const query = `
-                SELECT q.*, 
-                       COUNT(c.id) as comment_count
+                SELECT q.*, COUNT(c.id) as comment_count
                 FROM user_queries q
                 LEFT JOIN query_comments c ON q.id = c.query_id
                 WHERE ${whereClause}
@@ -179,7 +174,7 @@ router.get('/admin/all', async (req, res) => {
                 LIMIT ? OFFSET ?
             `;
 
-            connection.query(query, [...queryParams, limit, offset], (err, results) => {
+            connection.query(query, [...queryParams, limit, offset], (err, queries) => {
                 if (err) {
                     return res.status(500).json({
                         success: false,
@@ -187,16 +182,61 @@ router.get('/admin/all', async (req, res) => {
                     });
                 }
 
-                res.json({
-                    success: true,
-                    message: "Queries retrieved successfully",
-                    pagination: {
-                        current_page: page,
-                        total_pages: totalPages,
-                        total_items: totalQueries,
-                        items_per_page: limit
-                    },
-                    data: results
+                // Step 1: Extract all query IDs
+                const queryIds = queries.map(q => q.id);
+                if (queryIds.length === 0) {
+                    return res.json({
+                        success: true,
+                        message: "Queries retrieved successfully",
+                        pagination: {
+                            current_page: page,
+                            total_pages: totalPages,
+                            total_items: totalQueries,
+                            items_per_page: limit
+                        },
+                        data: []
+                    });
+                }
+
+                // Step 2: Get all comments for these query IDs
+                const commentQuery = `
+                    SELECT * FROM query_comments 
+                    WHERE query_id IN (${queryIds.map(() => '?').join(',')})
+                    ORDER BY created_at ASC
+                `;
+
+                connection.query(commentQuery, queryIds, (commentErr, comments) => {
+                    if (commentErr) {
+                        return res.status(500).json({
+                            success: false,
+                            message: "Error fetching comments"
+                        });
+                    }
+
+                    // Step 3: Group comments by query_id
+                    const commentMap = {};
+                    comments.forEach(c => {
+                        if (!commentMap[c.query_id]) commentMap[c.query_id] = [];
+                        commentMap[c.query_id].push(c);
+                    });
+
+                    // Step 4: Attach comments to queries
+                    const finalData = queries.map(q => ({
+                        ...q,
+                        comments: commentMap[q.id] || []
+                    }));
+
+                    res.json({
+                        success: true,
+                        message: "Queries retrieved successfully",
+                        pagination: {
+                            current_page: page,
+                            total_pages: totalPages,
+                            total_items: totalQueries,
+                            items_per_page: limit
+                        },
+                        data: finalData
+                    });
                 });
             });
         });
@@ -208,6 +248,7 @@ router.get('/admin/all', async (req, res) => {
         });
     }
 });
+
 
 // ================= Add comment to query : by admin ===============
 router.post('/:queryId/comment', async (req, res) => {
@@ -329,6 +370,7 @@ router.get('/user/:userId', async (req, res) => {
     try {
         const { userId } = req.params;
 
+        // Step 1: Fetch all user queries with comment count
         const query = `
             SELECT q.*, 
                    COUNT(c.id) as comment_count
@@ -339,7 +381,7 @@ router.get('/user/:userId', async (req, res) => {
             ORDER BY q.created_at DESC
         `;
 
-        connection.query(query, [userId], (err, results) => {
+        connection.query(query, [userId], (err, queries) => {
             if (err) {
                 console.error('Database error:', err);
                 return res.status(500).json({
@@ -348,9 +390,48 @@ router.get('/user/:userId', async (req, res) => {
                 });
             }
 
-            res.json({
-                success: true,
-                data: results
+            // Step 2: If no queries, return early
+            const queryIds = queries.map(q => q.id);
+            if (queryIds.length === 0) {
+                return res.json({
+                    success: true,
+                    data: []
+                });
+            }
+
+            // Step 3: Fetch all comments for those queries
+            const commentQuery = `
+                SELECT * FROM query_comments 
+                WHERE query_id IN (${queryIds.map(() => '?').join(',')})
+                ORDER BY created_at ASC
+            `;
+
+            connection.query(commentQuery, queryIds, (commentErr, comments) => {
+                if (commentErr) {
+                    console.error('Comment fetch error:', commentErr);
+                    return res.status(500).json({
+                        success: false,
+                        message: "Error fetching comments"
+                    });
+                }
+
+                // Step 4: Group comments by query_id
+                const commentMap = {};
+                comments.forEach(c => {
+                    if (!commentMap[c.query_id]) commentMap[c.query_id] = [];
+                    commentMap[c.query_id].push(c);
+                });
+
+                // Step 5: Attach comments to corresponding queries
+                const finalData = queries.map(q => ({
+                    ...q,
+                    comments: commentMap[q.id] || []
+                }));
+
+                res.json({
+                    success: true,
+                    data: finalData
+                });
             });
         });
     } catch (error) {
@@ -361,6 +442,7 @@ router.get('/user/:userId', async (req, res) => {
         });
     }
 });
+
 
 
 module.exports = router;
