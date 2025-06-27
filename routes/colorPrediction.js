@@ -12,8 +12,8 @@ app.use(cors());
 // Database pool
 const pool = mysql.createPool({
   host: "localhost",
-  user: "lucifer", // Replace with your MySQL username
-  password: "Welcome@noida2024", // Replace with your MySQL password
+  user: "root", // Replace with your MySQL username
+  password: "", // Replace with your MySQL password
   database: "stake",
 });
 
@@ -650,6 +650,18 @@ app.get('/color-bet-report/:periodNumber', async (req, res) => {
       return res.status(400).json({
         success: false,
         message: "Both periodNumber and duration are required"
+      });
+    }
+  
+        // --- Check if periodNumber exists ---
+    const [isValidPeriod] = await pool.query(`
+      SELECT 1 FROM result WHERE period_number = ? AND duration = ? LIMIT 1
+    `, [periodNumber, duration]);
+
+    if (isValidPeriod.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Invalid periodNumber or duration"
       });
     }
 
