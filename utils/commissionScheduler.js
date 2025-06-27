@@ -1,11 +1,11 @@
 const cron = require('node-cron');
 const connection = require('../config/db');
 
-cron.schedule('30 18 * * *', async () => {
-    console.log('Starting commission crediting job at 12:00 AM IST...');
+// FUNCTION WRAPPED FOR MANUAL CALL
+async function creditCommissions() {
+   // console.log('Starting commission crediting job manually or via cron...');
 
     try {
-        // Start a transaction
         await new Promise((resolve, reject) => {
             connection.beginTransaction(err => {
                 if (err) return reject(err);
@@ -13,7 +13,6 @@ cron.schedule('30 18 * * *', async () => {
             });
         });
 
-        // Find all uncredited commissions
         const uncreditedCommissionsQuery = `
             SELECT user_id, cryptoname, SUM(amount) as total_amount
             FROM referralcommissionhistory
@@ -38,11 +37,9 @@ cron.schedule('30 18 * * *', async () => {
             return;
         }
 
-        // Credit commissions to wallets and update UserCommissions
         for (const commission of uncreditedCommissions) {
             const { user_id, cryptoname, total_amount } = commission;
 
-            // Update wallet balance
             const updateWalletQuery = `
                 UPDATE wallet
                 SET balance = balance + ?
@@ -59,7 +56,6 @@ cron.schedule('30 18 * * *', async () => {
                 throw new Error(`Wallet entry for user ${user_id} and ${cryptoname} not found.`);
             }
 
-            // Update UserCommissions
             const updateCommissionsQuery = `
                 INSERT INTO usercommissions (userId, cryptoname, total_commissions)
                 VALUES (?, ?, ?)
@@ -73,7 +69,6 @@ cron.schedule('30 18 * * *', async () => {
             });
         }
 
-        // Mark commissions as credited
         const markCreditedQuery = `
             UPDATE referralcommissionhistory
             SET credited = TRUE
@@ -86,7 +81,6 @@ cron.schedule('30 18 * * *', async () => {
             });
         });
 
-        // Commit the transaction
         await new Promise((resolve, reject) => {
             connection.commit(err => {
                 if (err) return reject(err);
@@ -94,17 +88,23 @@ cron.schedule('30 18 * * *', async () => {
             });
         });
 
-        console.log('Commissions credited successfully at 12:00 AM IST.');
+        console.log('Commissions credited successfully.');
     } catch (error) {
         console.error('Error during commission crediting job:', error);
-        // Rollback the transaction on error
-        await new Promise((resolve) => {
+        await new Promise(resolve => {
             connection.rollback(() => resolve());
         });
+        throw error;
     }
-}, {
+}
+
+//  CRON JOB (Auto runs daily at 12:00 AM IST)
+cron.schedule('30 18 * * *', creditCommissions, {
     scheduled: true,
-    timezone: "UTC"
+    timezone: 'UTC'
 });
 
-console.log('Commission crediting scheduler started. Job will run at 12:00 AM IST daily.');
+console.log('Commission scheduler loaded. Cron job scheduled for 12:00 AM IST.');
+
+//  EXPORT the function to call manually
+module.exports = { creditCommissions };

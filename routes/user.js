@@ -3,6 +3,7 @@ const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const connection = require('../config/db');
 const { createSession } = require("../utils/session");
+const { creditCommissions } = require('../utils/commissionScheduler');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
@@ -1060,6 +1061,20 @@ router.get('/pending-commissions/:userId', async (req, res) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 });
+
+// ==============test cron job to credit commissions================
+router.get('/test/run-cron', async (req, res) => {
+
+
+  try {
+    await creditCommissions();
+    res.send('Commission cron job executed successfully.');
+  } catch (err) {
+    console.error(" Cron Execution Failed:", err.message || err);
+    res.status(500).send(' Error in cron job');
+  }
+});
+
 
 
 //============== Get  user related all data by userId =================

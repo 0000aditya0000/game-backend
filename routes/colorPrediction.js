@@ -652,6 +652,18 @@ app.get('/color-bet-report/:periodNumber', async (req, res) => {
         message: "Both periodNumber and duration are required"
       });
     }
+  
+        // --- Check if periodNumber exists ---
+    const [isValidPeriod] = await pool.query(`
+      SELECT 1 FROM result WHERE period_number = ? AND duration = ? LIMIT 1
+    `, [periodNumber, duration]);
+
+    if (isValidPeriod.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Invalid periodNumber or duration"
+      });
+    }
 
     // --- Query for Color Bets ---
     const [colorBets] = await pool.query(`
