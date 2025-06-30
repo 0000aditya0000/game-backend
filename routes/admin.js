@@ -70,9 +70,6 @@ router.post('/user', async (req, res) => {
 });
 
 
-
-
-
 //================================= add/delete games in gamedata table =========================
 
 // Add a new game (admin only)
@@ -109,6 +106,10 @@ router.delete('/games/:id', (req, res) => {
     res.json({ message: 'Game deleted successfully' });
   });
 });
+
+//======== Disable/Enable user login by Admin ==========
+ 
+
 
 
 module.exports = router;
