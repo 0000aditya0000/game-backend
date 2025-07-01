@@ -260,6 +260,7 @@ router.get("/referrals/:userId", async (req, res) => {
             u.name,
             u.username,
             u.email,
+            DATE(u.created_at) AS join_date,
             r.level,
             (SELECT d.amount FROM deposits d WHERE d.userId = u.id ORDER BY d.created_at ASC LIMIT 1) AS first_deposit,
             (SELECT SUM(d.amount) FROM deposits d WHERE d.userId = u.id) AS total_deposit,
@@ -295,95 +296,86 @@ router.get("/referrals/:userId", async (req, res) => {
 
 router.get("/referrals/today-summary/:userId", async (req, res) => {
   const { userId } = req.params;
-  const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
+  const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
 
   try {
-    //  Step 1: Check if user exists
+    // 1. Check user existence
     const [userCheck] = await new Promise((resolve, reject) => {
-      const checkSql = "SELECT id FROM users WHERE id = ?";
-      connection.query(checkSql, [userId], (err, results) => {
+      connection.query("SELECT id FROM users WHERE id = ?", [userId], (err, results) => {
         if (err) return reject(err);
         resolve(results);
       });
     });
 
     if (!userCheck) {
-      return res.status(404).json({
-        success: false,
-        message: "User not found"
-      });
+      return res.status(404).json({ success: false, message: "User not found" });
     }
 
-    //  Step 2: Get today's referrals and deposits
+    // 2. Get today's referral summary
     const summary = await new Promise((resolve, reject) => {
       const sql = `
         SELECT 
-          r.referred_id AS user_id,
+          u.id,
+          u.name,
+          u.username,
+          u.email,
           r.level,
-          DATE(u.created_at) AS register_date,
-          (SELECT d.amount FROM deposits d WHERE d.userId = r.referred_id AND DATE(d.created_at) = ? ORDER BY d.created_at ASC LIMIT 1) AS first_deposit_today,
-          (SELECT SUM(d.amount) FROM deposits d WHERE d.userId = r.referred_id AND DATE(d.created_at) = ?) AS deposit_today
+          (SELECT d.amount FROM deposits d WHERE d.userId = u.id AND DATE(d.created_at) = ? ORDER BY d.created_at ASC LIMIT 1) AS first_deposit,
+          (SELECT SUM(d.amount) FROM deposits d WHERE d.userId = u.id AND DATE(d.created_at) = ?) AS total_deposit,
+          (SELECT SUM(b.amount) FROM bets b WHERE b.user_id = u.id) AS total_bets,            
+          (SELECT IFNULL(SUM(c.amount), 0) FROM referralcommissionhistory c WHERE c.user_id = ? AND c.referred_user_id = u.id AND c.credited = 0) AS pending_commission
         FROM referrals r 
         JOIN users u ON r.referred_id = u.id
         WHERE r.referrer_id = ?
         AND DATE(u.created_at) = ?
+        ORDER BY r.level
       `;
 
-      connection.query(sql, [today, today, userId, today], (err, results) => {
+      connection.query(sql, [today, today, userId, userId, today], (err, results) => {
         if (err) return reject(err);
         resolve(results);
       });
     });
 
-    //  Step 3: Process result
-    let direct = {
-      registerCount: 0,
-      depositAmount: 0,
-      firstDepositAmount: 0
+    // 3. Group by level
+    const referralsByLevel = {
+      level1: [],
+      level2: [],
+      level3: [],
+      level4: [],
+      level5: []
     };
 
-    let team = {
-      registerCount: 0,
-      depositAmount: 0,
-      firstDepositAmount: 0
-    };
+    for (const row of summary) {
+      const levelKey = `level${row.level}`;
+      referralsByLevel[levelKey].push({
+        id: row.id,
+        name: row.name,
+        username: row.username,
+        email: row.email,
+        level: row.level,
+        first_deposit: parseFloat(row.first_deposit || 0).toFixed(2),
+        total_deposit: parseFloat(row.total_deposit || 0).toFixed(2),
+        total_bets: row.total_bets ? parseFloat(row.total_bets).toFixed(2) : null,
+        pending_commission: parseFloat(row.pending_commission || 0).toFixed(2)
+      });
+    }
 
-    summary.forEach(row => {
-      const deposit = row.deposit_today || 0;
-      const firstDeposit = row.first_deposit_today || 0;
+    const totalReferrals = summary.length;
 
-      if (row.level === 1) {
-        direct.registerCount++;
-        direct.depositAmount += deposit;
-        direct.firstDepositAmount += firstDeposit;
-      } else {
-        team.registerCount++;
-        team.depositAmount += deposit;
-        team.firstDepositAmount += firstDeposit;
-      }
-    });
-
-    //  Step 4: Final response
     res.json({
-      success: true,
       userId,
-      date: today,
-      directSubordinates: {
-        numberOfRegister: direct.registerCount,
-        depositAmount: direct.depositAmount,
-        firstDeposit: direct.firstDepositAmount
-      },
-      teamSubordinates: {
-        numberOfRegister: team.registerCount,
-        depositAmount: team.depositAmount,
-        firstDeposit: team.firstDepositAmount
-      }
+      totalReferrals,
+      referralsByLevel
     });
+
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Server error" });
   }
 });
+
+
 
 
 // User login
