@@ -70,6 +70,133 @@ router.post('/addnew', async (req, res) => {
 });
 
 // Retrieve all bank accounts with pagination and status filter
+// router.get('/getall', async (req, res) => {
+//   try {
+//     const page = parseInt(req.query.page) || 1;
+//     const limit = parseInt(req.query.limit) || 10;
+//     const offset = (page - 1) * limit;
+//     const status = req.query.status; // Optional status filter
+
+//     // Base queries with proper table aliases
+//     let query = `
+//       SELECT 
+//         ba.id,
+//         ba.userId,
+//         ba.status,
+//         ba.accountname,
+//         ba.accountnumber,
+//         ba.ifsccode,
+//         ba.branch,
+//         ba.usdt,
+//         ba.network,
+//         u.name,
+//         u.username,
+//         u.email,
+//         u.phone,
+//         u.kycstatus
+//       FROM bankaccount ba
+//       LEFT JOIN users u ON ba.userId = u.id
+//     `;
+    
+//     let countQuery = `
+//       SELECT COUNT(*) as total 
+//       FROM bankaccount ba
+//     `;
+
+//     let queryParams = [];
+//     let whereClause = '';
+
+//     // Add status filter if provided
+//     if (status !== undefined) {
+//       whereClause = ' WHERE ba.status = ?';
+//       queryParams.push(parseInt(status));
+//     }
+
+//     countQuery += whereClause;
+//     query += whereClause;
+
+//     // Add pagination
+//     query += " ORDER BY ba.id DESC LIMIT ? OFFSET ?";
+//     queryParams.push(limit, offset);
+
+//     // Get total count
+//     connection.query(countQuery, queryParams.slice(0, -2), (countErr, countResults) => {
+//       if (countErr) {
+//         console.error('Count Query Error:', countErr);
+//         return res.status(500).json({ 
+//           error: 'Database query error', 
+//           details: countErr.message 
+//         });
+//       }
+
+//       const totalRecords = countResults[0].total;
+//       const totalPages = Math.ceil(totalRecords / limit);
+
+//       // Get paginated results
+//       connection.query(query, queryParams, (err, results) => {
+//         if (err) {
+//           console.error('Data Query Error:', err);
+//           return res.status(500).json({ 
+//             error: 'Database query error', 
+//             details: err.message 
+//           });
+//         }
+        
+//         // Format the response data
+//         const formattedData = results.map(record => {
+//           const baseData = {
+//             id: record.id,
+//             userId: record.userId,
+//             status: record.status,
+//             user: {
+//               name: record.name || null,
+//               username: record.username || null,
+//               email: record.email || null,
+//               mobile: record.mobile || null,
+//               kyc_status: record.kyc_status || null
+//             }
+//           };
+
+//           // Add either bank account details or USDT details
+//           if (record.accountnumber) {
+//             baseData.accountType = 'bank';
+//             baseData.bankDetails = {
+//               accountName: record.accountname || null,
+//               accountNumber: record.accountnumber || null,
+//               ifscCode: record.ifsccode || null,
+//               branch: record.branch || null
+//             };
+//           } else if (record.usdt) {
+//             baseData.accountType = 'crypto';
+//             baseData.cryptoDetails = {
+//               usdtAddress: record.usdt || null,
+//               network: record.network || null
+//             };
+//           }
+
+//           return baseData;
+//         });
+
+//         res.json({
+//           success: true,
+//           data: formattedData,
+//           pagination: {
+//             currentPage: page,
+//             totalPages: totalPages,
+//             totalRecords: totalRecords,
+//             limit: limit
+//           }
+//         });
+//       });
+//     });
+//   } catch (error) {
+//     console.error('Server Error:', error);
+//     res.status(500).json({ 
+//       error: 'Error fetching bank accounts',
+//       details: error.message 
+//     });
+//   }
+// });
 router.get('/getall', async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
@@ -77,7 +204,6 @@ router.get('/getall', async (req, res) => {
     const offset = (page - 1) * limit;
     const status = req.query.status; // Optional status filter
 
-    // Base queries with proper table aliases
     let query = `
       SELECT 
         ba.id,
@@ -92,21 +218,20 @@ router.get('/getall', async (req, res) => {
         u.name,
         u.username,
         u.email,
-        u.phone,
-        u.kycstatus
+        u.phone
       FROM bankaccount ba
       LEFT JOIN users u ON ba.userId = u.id
     `;
-    
+
     let countQuery = `
       SELECT COUNT(*) as total 
       FROM bankaccount ba
+      LEFT JOIN users u ON ba.userId = u.id
     `;
 
     let queryParams = [];
     let whereClause = '';
 
-    // Add status filter if provided
     if (status !== undefined) {
       whereClause = ' WHERE ba.status = ?';
       queryParams.push(parseInt(status));
@@ -114,36 +239,43 @@ router.get('/getall', async (req, res) => {
 
     countQuery += whereClause;
     query += whereClause;
-
-    // Add pagination
     query += " ORDER BY ba.id DESC LIMIT ? OFFSET ?";
     queryParams.push(limit, offset);
 
     // Get total count
     connection.query(countQuery, queryParams.slice(0, -2), (countErr, countResults) => {
       if (countErr) {
-        console.error('Count Query Error:', countErr);
-        return res.status(500).json({ 
-          error: 'Database query error', 
-          details: countErr.message 
-        });
+        return res.status(500).json({ error: 'Database query error', details: countErr.message });
       }
 
       const totalRecords = countResults[0].total;
       const totalPages = Math.ceil(totalRecords / limit);
 
-      // Get paginated results
-      connection.query(query, queryParams, (err, results) => {
+      connection.query(query, queryParams, async (err, results) => {
         if (err) {
-          console.error('Data Query Error:', err);
-          return res.status(500).json({ 
-            error: 'Database query error', 
-            details: err.message 
+          return res.status(500).json({ error: 'Database query error', details: err.message });
+        }
+
+        const userIds = results.map(r => r.userId);
+        let kycDataMap = {};
+
+        if (userIds.length > 0) {
+          const kycQuery = `SELECT * FROM user_kyc_requests WHERE user_id IN (?)`;
+          const [kycResults] = await new Promise((resolve, reject) => {
+            connection.query(kycQuery, [userIds], (err, res) => {
+              if (err) reject(err);
+              else resolve([res]);
+            });
+          });
+
+          kycResults.forEach(k => {
+            kycDataMap[k.user_id] = k;
           });
         }
-        
-        // Format the response data
+
         const formattedData = results.map(record => {
+          const kyc = kycDataMap[record.userId] || {};
+
           const baseData = {
             id: record.id,
             userId: record.userId,
@@ -152,12 +284,19 @@ router.get('/getall', async (req, res) => {
               name: record.name || null,
               username: record.username || null,
               email: record.email || null,
-              mobile: record.mobile || null,
-              kyc_status: record.kyc_status || null
+              mobile: record.phone || null,
+              kyc: {
+                status: kyc.status || 'not_submitted',
+                note: kyc.kyc_note || null,
+                aadhar_front: kyc.aadhar_front || null,
+                aadhar_back: kyc.aadhar_back || null,
+                pan: kyc.pan || null,
+                created_at: kyc.created_at || null,
+                updated_at: kyc.updated_at || null
+              }
             }
           };
 
-          // Add either bank account details or USDT details
           if (record.accountnumber) {
             baseData.accountType = 'bank';
             baseData.bankDetails = {
@@ -197,7 +336,6 @@ router.get('/getall', async (req, res) => {
     });
   }
 });
-
 
 //Retrive one bank accounts by user id
 router.get('/getone/user/:id', async (req, res) => {

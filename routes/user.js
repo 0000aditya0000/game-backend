@@ -291,6 +291,101 @@ router.get("/referrals/:userId", async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 });
+
+
+router.get("/referrals/today-summary/:userId", async (req, res) => {
+  const { userId } = req.params;
+  const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
+
+  try {
+    //  Step 1: Check if user exists
+    const [userCheck] = await new Promise((resolve, reject) => {
+      const checkSql = "SELECT id FROM users WHERE id = ?";
+      connection.query(checkSql, [userId], (err, results) => {
+        if (err) return reject(err);
+        resolve(results);
+      });
+    });
+
+    if (!userCheck) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found"
+      });
+    }
+
+    //  Step 2: Get today's referrals and deposits
+    const summary = await new Promise((resolve, reject) => {
+      const sql = `
+        SELECT 
+          r.referred_id AS user_id,
+          r.level,
+          DATE(u.created_at) AS register_date,
+          (SELECT d.amount FROM deposits d WHERE d.userId = r.referred_id AND DATE(d.created_at) = ? ORDER BY d.created_at ASC LIMIT 1) AS first_deposit_today,
+          (SELECT SUM(d.amount) FROM deposits d WHERE d.userId = r.referred_id AND DATE(d.created_at) = ?) AS deposit_today
+        FROM referrals r 
+        JOIN users u ON r.referred_id = u.id
+        WHERE r.referrer_id = ?
+        AND DATE(u.created_at) = ?
+      `;
+
+      connection.query(sql, [today, today, userId, today], (err, results) => {
+        if (err) return reject(err);
+        resolve(results);
+      });
+    });
+
+    //  Step 3: Process result
+    let direct = {
+      registerCount: 0,
+      depositAmount: 0,
+      firstDepositAmount: 0
+    };
+
+    let team = {
+      registerCount: 0,
+      depositAmount: 0,
+      firstDepositAmount: 0
+    };
+
+    summary.forEach(row => {
+      const deposit = row.deposit_today || 0;
+      const firstDeposit = row.first_deposit_today || 0;
+
+      if (row.level === 1) {
+        direct.registerCount++;
+        direct.depositAmount += deposit;
+        direct.firstDepositAmount += firstDeposit;
+      } else {
+        team.registerCount++;
+        team.depositAmount += deposit;
+        team.firstDepositAmount += firstDeposit;
+      }
+    });
+
+    //  Step 4: Final response
+    res.json({
+      success: true,
+      userId,
+      date: today,
+      directSubordinates: {
+        numberOfRegister: direct.registerCount,
+        depositAmount: direct.depositAmount,
+        firstDeposit: direct.firstDepositAmount
+      },
+      teamSubordinates: {
+        numberOfRegister: team.registerCount,
+        depositAmount: team.depositAmount,
+        firstDeposit: team.firstDepositAmount
+      }
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+
 // User login
 router.post('/login', async (req, res) => {
   // Destructure only email and password from the request body
