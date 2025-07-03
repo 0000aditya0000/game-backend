@@ -129,6 +129,50 @@ router.post('/disable-login', async (req, res) => {
   }
 });
 
+//==================== GET /admin/user-logins
+router.get('/user-logins', async (req, res) => {
+  const page = parseInt(req.query.page) || 1;       // default page = 1
+  const limit = parseInt(req.query.limit) || 30;    // default limit = 30
+  const offset = (page - 1) * limit;
+
+  try {
+    const countQuery = "SELECT COUNT(*) as total FROM user_login_logs";
+    connection.query(countQuery, (err, countResult) => {
+      if (err) {
+        console.error("Count error:", err);
+        return res.status(500).json({ success: false, message: "Error counting records" });
+      }
+
+      const totalRecords = countResult[0].total;
+      const totalPages = Math.ceil(totalRecords / limit);
+
+      const query = "SELECT * FROM user_login_logs ORDER BY login_datetime DESC LIMIT ? OFFSET ?";
+      connection.query(query, [limit, offset], (err, results) => {
+        if (err) {
+          console.error("Query error:", err);
+          return res.status(500).json({ success: false, message: "Database error" });
+        }
+
+        res.json({
+          success: true,
+          pagination: {
+            currentPage: page,
+            totalPages,
+            totalRecords,
+            limit
+          },
+         data: results
+        });
+      });
+    });
+  } catch (err) {
+    console.error("Unexpected error:", err);
+    res.status(500).json({ success: false, message: "Error fetching logs" });
+  }
+});
+
+
+
 
 
 module.exports = router;
