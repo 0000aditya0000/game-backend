@@ -108,7 +108,26 @@ router.delete('/games/:id', (req, res) => {
 });
 
 //======== Disable/Enable user login by Admin ==========
- 
+
+router.post('/disable-login', async (req, res) => {
+  const { userId, disable } = req.body;
+
+  if (!userId || typeof disable === 'undefined') {
+    return res.status(400).json({ error: 'userId and disable (true/false) required' });
+  }
+
+  try {
+    const query = "UPDATE users SET is_login_disabled = ? WHERE id = ?";
+    connection.query(query, [disable ? 1 : 0, userId], (err, result) => {
+      if (err) return res.status(500).json({ error: 'Database error' });
+
+      res.json({ message: `User login has been ${disable ? 'disabled' : 'enabled'}` });
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Something went wrong' });
+  }
+});
 
 
 

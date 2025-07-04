@@ -7,6 +7,8 @@ const { creditCommissions } = require('../utils/commissionScheduler');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const { generateAccessToken, generateRefreshToken, verifyRefreshToken } = require('../utils/jwt');
+const authenticateToken = require('../middleware/authenticateToken');
 const router = express.Router();
 
 const storage = multer.diskStorage({
@@ -120,8 +122,8 @@ router.post('/register', async (req, res) => {
 
   // Step 1: Validate mandatory fields
   if (!phoneNumber || !myReferralCode || !password) {
-    return res.status(400).json({ 
-      error: 'Phone number, referral code, and password are required fields' 
+    return res.status(400).json({
+      error: 'Phone number, referral code, and password are required fields'
     });
   }
 
@@ -254,7 +256,7 @@ router.get("/referrals/:userId", async (req, res) => {
   try {
     // Get all referrals for this user up to level 5
     const referrals = await new Promise((resolve, reject) => {
-     const sql = `
+      const sql = `
           SELECT 
             u.id,
             u.name,
@@ -268,9 +270,9 @@ router.get("/referrals/:userId", async (req, res) => {
             (SELECT IFNULL(SUM(c.amount), 0) FROM referralcommissionhistory c WHERE c.user_id = ? AND c.referred_user_id = u.id AND c.credited = 0 ) AS pending_commission
             FROM referrals r JOIN users u ON r.referred_id = u.id WHERE r.referrer_id = ? ORDER BY r.level
         `;
-        const [referrerId] = [req.params.userId];
+      const [referrerId] = [req.params.userId];
 
-        connection.query(sql, [referrerId, referrerId], (err, results) => {
+      connection.query(sql, [referrerId, referrerId], (err, results) => {
         if (err) return reject(err);
         resolve(results);
       });
@@ -379,65 +381,227 @@ router.get("/referrals/today-summary/:userId", async (req, res) => {
 
 
 // User login
-router.post('/login', async (req, res) => {
-  // Destructure only email and password from the request body
-  const { email, password } = req.body;
+// router.post('/login', async (req, res) => {
+//   // Destructure only email and password from the request body
+//   const { email, password } = req.body;
 
-  // Log the received email/username/phone and password (for debugging)
+//   // Log the received email/username/phone and password (for debugging)
+//   console.log('Attempting login with:', { identifier: email, passwordProvided: !!password });
+
+//   // Check if both email/username/phone value and password are provided
+//   if (!email || !password) {
+//     console.log('Login failed: Missing identifier or password'); // Log failure reason
+//     return res.status(400).json({ error: 'Email/Username/phone and password are required' });
+//   }
+
+//   try {
+//     // Query to find the user by matching the provided value against email, username, OR phone
+//     const query = "SELECT * FROM users WHERE email = ? OR username = ? OR phone = ?";
+//     connection.query(query, [email, email, email], async (err, results) => {
+//       if (err) return res.status(500).json({ error: 'Database query error' });
+//       if (results.length === 0) return res.status(404).json({ error: 'User not found' });
+
+//       const user = results[0];
+
+
+//      //check before comparing password
+//       if (user.is_login_disabled) {
+//         return res.status(403).json({ error: 'Your login has been disabled by admin' });
+//          }
+
+//     const isMatch = await bcrypt.compare(password, user.password);
+//       if (!isMatch) return res.status(401).json({ error: 'Invalid credentials' });
+
+//       // Create session (deletes old one and inserts new one)
+//       const token = await createSession(user.id);
+
+//       // Fetch wallet details for the logged-in user
+//       const walletQuery = "SELECT * FROM wallet WHERE userId = ?";
+//       connection.query(walletQuery, [user.id], (err, walletResults) => {
+//         if (err) return res.status(500).json({ error: 'Error fetching wallet data' });
+
+//         // Send the user profile and wallet data in the response
+//         res.json({
+//           token,
+//           user: {
+//             id: user.id,
+//             username: user.username,
+//             email: user.email,
+//             phone: user.phone,
+//             dob: user.dob,
+//             referalCode: user.my_referral_code
+//           },
+//           wallet: walletResults
+//         });
+//       });
+//     });
+//   } catch (error) {
+//     console.error('Unexpected error during login:', error); // Log unexpected error
+//     res.status(500).json({ error: 'Error logging in user' });
+//   }
+// });
+
+
+
+//========== login with refresh token ==============
+router.post('/login', async (req, res) => {
+  const { email, password } = req.body;
   console.log('Attempting login with:', { identifier: email, passwordProvided: !!password });
 
-  // Check if both email/username/phone value and password are provided
   if (!email || !password) {
-    console.log('Login failed: Missing identifier or password'); // Log failure reason
-    return res.status(400).json({ error: 'Email/Username/phone and password are required' });
+    console.log('Login failed: Missing identifier or password');
+    return res.status(400).json({ error: 'Email/Username/ and password are required' });
   }
 
   try {
-    // Query to find the user by matching the provided value against email, username, OR phone
     const query = "SELECT * FROM users WHERE email = ? OR username = ? OR phone = ?";
     connection.query(query, [email, email, email], async (err, results) => {
       if (err) return res.status(500).json({ error: 'Database query error' });
       if (results.length === 0) return res.status(404).json({ error: 'User not found' });
 
       const user = results[0];
-  
 
-     //check before comparing password
-      if (user.is_login_disabled) {
-        return res.status(403).json({ error: 'Your login has been disabled by admin' });
-         }
-     
-    const isMatch = await bcrypt.compare(password, user.password);
+      const isMatch = await bcrypt.compare(password, user.password);
       if (!isMatch) return res.status(401).json({ error: 'Invalid credentials' });
+         //  NEW: Block login if user is disabled
+      if (user.is_login_disabled) {
+        return res.status(403).json({ error: 'Your login access has been disabled by admin' });
+      }
 
-      // Create session (deletes old one and inserts new one)
-      const token = await createSession(user.id);
+      // Generate tokens
+      const accessToken = generateAccessToken(user);
+      const refreshToken = generateRefreshToken(user);
 
-      // Fetch wallet details for the logged-in user
-      const walletQuery = "SELECT * FROM wallet WHERE userId = ?";
-      connection.query(walletQuery, [user.id], (err, walletResults) => {
-        if (err) return res.status(500).json({ error: 'Error fetching wallet data' });
+      // Store refresh token in DB
+      const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
+      connection.query(
+        'INSERT INTO refresh_tokens (user_id, token, expires_at) VALUES (?, ?, ?)',
+        [user.id, refreshToken, expiresAt],
+        (err) => {
+          if (err) return res.status(500).json({ error: 'Error saving refresh token' });
 
-        // Send the user profile and wallet data in the response
-        res.json({
-          token,
-          user: {
-            id: user.id,
-            username: user.username,
-            email: user.email,
-            phone: user.phone,
-            dob: user.dob,
-            referalCode: user.my_referral_code
-          },
-          wallet: walletResults
-        });
-      });
+          // Fetch wallet details for the logged-in user
+          const walletQuery = "SELECT * FROM wallet WHERE userId = ?";
+          connection.query(walletQuery, [user.id], (err, walletResults) => {
+            if (err) return res.status(500).json({ error: 'Error fetching wallet data' });
+
+            res.json({
+              accessToken,
+              refreshToken,
+              user: {
+                id: user.id,
+                username: user.username,
+                email: user.email,
+                phone: user.phone,
+                dob: user.dob,
+                referalCode: user.my_referral_code
+              },
+              wallet: walletResults
+            });
+          });
+        }
+      );
     });
   } catch (error) {
-    console.error('Unexpected error during login:', error); // Log unexpected error
+    console.error('Unexpected error during login:', error);
     res.status(500).json({ error: 'Error logging in user' });
   }
 });
+
+// ======= Generate access token using REFRESH TOKEN =======
+router.post('/refresh', (req, res) => {
+  const { refreshToken } = req.body;
+  if (!refreshToken) return res.status(400).json({ error: 'Refresh token required' });
+
+  //  1. Clean up expired refresh tokens
+  connection.query(
+    'DELETE FROM refresh_tokens WHERE expires_at < NOW()',
+    (err) => {
+      if (err) console.error('Expired tokens cleanup error:', err);
+    }
+  );
+
+  // 🔍 2. Check if refresh token exists and is valid in DB
+  const query = 'SELECT * FROM refresh_tokens WHERE token = ? AND expires_at > NOW()';
+  connection.query(query, [refreshToken], (err, results) => {
+    if (err) return res.status(500).json({ error: 'Database error' });
+    if (!results.length) return res.status(403).json({ error: 'Invalid or expired refresh token' });
+
+    let decoded;
+    try {
+      //  3. Verify the refresh token
+      decoded = verifyRefreshToken(refreshToken);
+    } catch (err) {
+      return res.status(403).json({ error: 'Invalid or expired refresh token' });
+    }
+
+    const userId = decoded.id;
+
+    //  4. Fetch user from DB using ID from token
+    const userQuery = 'SELECT * FROM users WHERE id = ?';
+    connection.query(userQuery, [userId], (err, userResults) => {
+      if (err) return res.status(500).json({ error: 'Database error fetching user' });
+      if (!userResults.length) return res.status(404).json({ error: 'User not found' });
+
+      const user = userResults[0];
+
+      //  5. Check if user is disabled
+      if (user.is_login_disabled) {
+        return res.status(403).json({ error: 'Login disabled by admin' });
+      }
+
+      //  6. Generate new access token
+      const accessToken = generateAccessToken(user);
+      res.json({ accessToken });
+    });
+  });
+});
+
+
+
+
+// ============= LOGOUT ====================
+
+router.post('/logout', (req, res) => {
+  const { refreshToken } = req.body;
+  if (!refreshToken) {
+    return res.status(400).json({ error: 'Refresh token required' });
+  }
+
+  //  Step 1: Check in DB
+  connection.query(
+    'SELECT * FROM refresh_tokens WHERE token = ?',
+    [refreshToken],
+    (err, results) => {
+      if (err) {
+        return res.status(500).json({ error: 'Database error' });
+      }
+
+      if (results.length === 0) {
+        return res.status(403).json({ error: 'Invalid refresh token' });
+      }
+
+      //  Step 2: Check expiry manually OR using verify()
+      try {
+        verifyRefreshToken(refreshToken); // throws error if invalid/expired
+      } catch (err) {
+        return res.status(403).json({ error: 'Expired or invalid token' });
+      }
+
+      //  Step 3: Delete from DB if everything is valid
+      connection.query(
+        'DELETE FROM refresh_tokens WHERE token = ?',
+        [refreshToken],
+        (err) => {
+          if (err) return res.status(500).json({ error: 'Database error during logout' });
+
+          res.json({ message: 'Logged out successfully' });
+        }
+      );
+    }
+  );
+});
+
 
 
 
@@ -475,7 +639,7 @@ router.get('/allusers', async (req, res) => {
 });
 
 //Get one user by id
-router.get('/user/:id', async (req, res) => {
+router.get('/user/:id',authenticateToken,async (req, res) => {
   const userId = req.params.id;
   console.log(userId, "name");
   try {
@@ -678,7 +842,7 @@ router.put('/user/password/:id', async (req, res) => {
 //       if (results.affectedRows === 0) {
 //         return res.status(404).json({ success: false, message: "User not found" });
 //       }
-  
+
 //       res.json({
 //         success: true,
 //         message: "KYC details updated successfully",
@@ -2626,8 +2790,8 @@ router.get('/pending-kyc', async (req, res) => {
         LIMIT ? OFFSET ?
       `;
 
-      const dataParams = status === 'all' 
-        ? [limit, offset] 
+      const dataParams = status === 'all'
+        ? [limit, offset]
         : [status, limit, offset];
 
       connection.query(dataQuery, dataParams, (err, results) => {
