@@ -10,7 +10,7 @@ function authenticateToken(req, res, next) {
         const decoded = verifyAccessToken(token); //  Valid token
         const userId = decoded.id;
 
-        // 🔍 Fetch user from DB to check if login is disabled
+        //  Fetch user from DB to check if login is disabled
         const query = 'SELECT * FROM users WHERE id = ?';
         connection.query(query, [userId], (err, results) => {
             if (err) return res.status(500).json({ error: 'Database error' });

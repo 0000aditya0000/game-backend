@@ -171,6 +171,22 @@ router.get('/user-logins', async (req, res) => {
   }
 });
 
+//==================== Block/Unblock user withdrawal by Admin
+router.post('/block-withdrawal', (req, res) => {
+  const { userId, block } = req.body;
+  if (!userId || typeof block === 'undefined') {
+    return res.status(400).json({ error: 'userId and block (true/false) required' });
+  }
+
+  const query = "UPDATE users SET is_withdrawal_blocked = ? WHERE id = ?";
+  connection.query(query, [block ? 1 : 0, userId], (err) => {
+    if (err) return res.status(500).json({ error: 'Database error' });
+
+    res.json({ message: `User withdrawal has been ${block ? 'blocked' : 'unblocked'} successfully.` });
+  });
+});
+
+
 
 
 

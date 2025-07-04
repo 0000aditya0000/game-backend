@@ -650,7 +650,7 @@ router.get('/allusers', async (req, res) => {
 });
 
 //Get one user by id
-router.get('/user/:id',authenticateToken,async (req, res) => {
+router.get('/user/:id',async (req, res) => {
   const userId = req.params.id;
   console.log(userId, "name");
   try {
