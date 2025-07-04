@@ -468,6 +468,17 @@ router.post('/login', async (req, res) => {
         return res.status(403).json({ error: 'Your login access has been disabled by admin' });
       }
 
+       // -----------------  Track this login -----------------
+     const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket?.remoteAddress || null;
+      const logQuery = `
+        INSERT INTO user_login_logs (user_id, phone, ip_address)
+        VALUES (?, ?, ?)
+      `;
+      connection.query(logQuery, [user.id, user.phone, ip], (logErr) => {
+        if (logErr) console.error('Login-log insert failed:', logErr);
+      });
+    
+
       // Generate tokens
       const accessToken = generateAccessToken(user);
       const refreshToken = generateRefreshToken(user);
