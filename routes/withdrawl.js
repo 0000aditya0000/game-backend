@@ -12,10 +12,171 @@ const router = express.Router();
 // "erc20"
 
 // Create a new withdrawal request
+// router.post('/withdrawl', async (req, res) => {
+//   const { userId, currency, amount, walletAddress, network, bankname } = req.body;
+
+//   // First check userId
+//   if (!userId) {
+//     return res.status(400).json({
+//       success: false,
+//       message: 'userId is required'
+//     });
+//   }
+
+//   // Validate based on currency
+//   if (currency === 'usdt') {
+//     if (!amount || !walletAddress || !network) {
+//       return res.status(400).json({
+//         success: false,
+//         message: 'For USDT withdrawals, amount, walletAddress and network are required'
+//       });
+//     }
+//   } else if (currency === 'inr') {
+//     if (!amount || !bankname) {
+//       return res.status(400).json({
+//         success: false,
+//         message: 'For INR withdrawals, amount and bankname are required'
+//       });
+//     }
+//   } else {
+//     return res.status(400).json({
+//       success: false,
+//       message: 'Invalid currency. Must be either "usdt" or "inr"'
+//     });
+//   }
+
+//   try {
+
+    
+
+//     // Start a transaction
+//     connection.beginTransaction(err => {
+//       if (err) {
+//         return res.status(500).json({
+//           success: false,
+//           message: 'Transaction initialization failed'
+//         });
+//       }
+
+//       // Check wallet balance
+//       const checkBalanceQuery = `
+//         SELECT balance 
+//         FROM wallet 
+//         WHERE userId = ? AND cryptoname = 'inr'
+//       `;
+
+//       connection.query(checkBalanceQuery, [userId], (err, results) => {
+//         if (err) {
+//           return connection.rollback(() => {
+//             res.status(500).json({
+//               success: false,
+//               message: 'Error checking wallet balance'
+//             });
+//           });
+//         }
+
+//         console.log('Wallet balance results:', results);
+        
+//         if (results.length === 0 || parseFloat(results[0].balance) < parseFloat(amount)) {
+//           return connection.rollback(() => {
+//             res.status(400).json({
+//               success: false,
+//               message: 'Insufficient balance'
+//             });
+//           });
+//         }
+
+//         // Deduct from wallet
+//         const deductBalanceQuery = `
+//           UPDATE wallet 
+//           SET balance = balance - ? 
+//           WHERE userId = ? AND cryptoname = 'inr'
+//         `;
+
+//         connection.query(deductBalanceQuery, [amount, userId], (err) => {
+//           if (err) {
+//             return connection.rollback(() => {
+//               res.status(500).json({
+//                 success: false,
+//                 message: 'Error deducting balance from wallet'
+//               });
+//             });
+//           }
+
+//           // Insert into withdrawl table based on currency
+//           let insertQuery;
+//           let insertParams;
+
+//           if (currency === 'inr') {
+//             insertQuery = `
+//               INSERT INTO withdrawl (
+//                 userId, balance, cryptoname, bankName,
+//                 status, createdOn
+//               ) VALUES (?, ?, ?, ?, ?, NOW())
+//             `;
+//             insertParams = [userId, amount, currency, bankname, 0];
+//           } else {
+//             insertQuery = `
+//               INSERT INTO withdrawl (
+//                 userId, balance, cryptoname, walletAddress,
+//                 networkType, status, createdOn
+//               ) VALUES (?, ?, ?, ?, ?, ?, NOW())
+//             `;
+//             insertParams = [userId, amount, currency, walletAddress, network, 0];
+//           }
+
+//           connection.query(insertQuery, insertParams, (err, result) => {
+//             if (err) {
+//               return connection.rollback(() => {
+//                 res.status(500).json({
+//                   success: false,
+//                   message: 'Error creating withdrawal entry'
+//                 });
+//               });
+//             }
+
+//             // Commit the transaction
+//             connection.commit(err => {
+//               if (err) {
+//                 return connection.rollback(() => {
+//                   res.status(500).json({
+//                     success: false,
+//                     message: 'Error committing transaction'
+//                   });
+//                 });
+//               }
+
+//               res.json({
+//                 success: true,
+//                 message: 'Withdrawal request created successfully',
+//                 data: {
+//                   withdrawalId: result.insertId,
+//                   currency,
+//                   amount,
+//                   status: 'pending',
+//                   ...(currency === 'inr' 
+//                     ? { bankname } 
+//                     : { walletAddress, network })
+//                 }
+//               });
+//             });
+//           });
+//         });
+//       });
+//     });
+//   } catch (error) {
+//     console.error('Error processing withdrawal request:', error);
+//     res.status(500).json({
+//       success: false,
+//       message: 'Internal server error',
+//       error: error.message
+//     });
+//   }
+// });
 router.post('/withdrawl', async (req, res) => {
   const { userId, currency, amount, walletAddress, network, bankname } = req.body;
 
-  // First check userId
+  // 1. Validate userId
   if (!userId) {
     return res.status(400).json({
       success: false,
@@ -23,7 +184,7 @@ router.post('/withdrawl', async (req, res) => {
     });
   }
 
-  // Validate based on currency
+  // 2. Validate currency-specific fields
   if (currency === 'usdt') {
     if (!amount || !walletAddress || !network) {
       return res.status(400).json({
@@ -46,115 +207,138 @@ router.post('/withdrawl', async (req, res) => {
   }
 
   try {
-    // Start a transaction
-    connection.beginTransaction(err => {
+    // 3. Check if user is blocked from withdrawal
+    const blockQuery = `SELECT is_withdrawal_blocked FROM users WHERE id = ?`;
+    connection.query(blockQuery, [userId], (err, userResults) => {
       if (err) {
         return res.status(500).json({
           success: false,
-          message: 'Transaction initialization failed'
+          message: 'Error checking withdrawal block status'
         });
       }
 
-      // Check wallet balance
-      const checkBalanceQuery = `
-        SELECT balance 
-        FROM wallet 
-        WHERE userId = ? AND cryptoname = 'inr'
-      `;
+      if (!userResults.length) {
+        return res.status(404).json({
+          success: false,
+          message: 'User not found'
+        });
+      }
 
-      connection.query(checkBalanceQuery, [userId], (err, results) => {
+      if (userResults[0].is_withdrawal_blocked) {
+        return res.status(403).json({
+          success: false,
+          message: 'Withdrawals are currently blocked for your account by admin'
+        });
+      }
+
+      // 4. Begin Transaction
+      connection.beginTransaction(err => {
         if (err) {
-          return connection.rollback(() => {
-            res.status(500).json({
-              success: false,
-              message: 'Error checking wallet balance'
-            });
+          return res.status(500).json({
+            success: false,
+            message: 'Transaction initialization failed'
           });
         }
 
-        console.log('Wallet balance results:', results);
-        
-        if (results.length === 0 || parseFloat(results[0].balance) < parseFloat(amount)) {
-          return connection.rollback(() => {
-            res.status(400).json({
-              success: false,
-              message: 'Insufficient balance'
-            });
-          });
-        }
-
-        // Deduct from wallet
-        const deductBalanceQuery = `
-          UPDATE wallet 
-          SET balance = balance - ? 
+        // 5. Check wallet balance
+        const checkBalanceQuery = `
+          SELECT balance 
+          FROM wallet 
           WHERE userId = ? AND cryptoname = 'inr'
         `;
 
-        connection.query(deductBalanceQuery, [amount, userId], (err) => {
+        connection.query(checkBalanceQuery, [userId], (err, results) => {
           if (err) {
             return connection.rollback(() => {
               res.status(500).json({
                 success: false,
-                message: 'Error deducting balance from wallet'
+                message: 'Error checking wallet balance'
               });
             });
           }
 
-          // Insert into withdrawl table based on currency
-          let insertQuery;
-          let insertParams;
-
-          if (currency === 'inr') {
-            insertQuery = `
-              INSERT INTO withdrawl (
-                userId, balance, cryptoname, bankName,
-                status, createdOn
-              ) VALUES (?, ?, ?, ?, ?, NOW())
-            `;
-            insertParams = [userId, amount, currency, bankname, 0];
-          } else {
-            insertQuery = `
-              INSERT INTO withdrawl (
-                userId, balance, cryptoname, walletAddress,
-                networkType, status, createdOn
-              ) VALUES (?, ?, ?, ?, ?, ?, NOW())
-            `;
-            insertParams = [userId, amount, currency, walletAddress, network, 0];
+          if (results.length === 0 || parseFloat(results[0].balance) < parseFloat(amount)) {
+            return connection.rollback(() => {
+              res.status(400).json({
+                success: false,
+                message: 'Insufficient balance'
+              });
+            });
           }
 
-          connection.query(insertQuery, insertParams, (err, result) => {
+          // 6. Deduct from wallet
+          const deductBalanceQuery = `
+            UPDATE wallet 
+            SET balance = balance - ? 
+            WHERE userId = ? AND cryptoname = 'inr'
+          `;
+
+          connection.query(deductBalanceQuery, [amount, userId], (err) => {
             if (err) {
               return connection.rollback(() => {
                 res.status(500).json({
                   success: false,
-                  message: 'Error creating withdrawal entry'
+                  message: 'Error deducting balance from wallet'
                 });
               });
             }
 
-            // Commit the transaction
-            connection.commit(err => {
+            // 7. Insert into withdrawl table
+            let insertQuery;
+            let insertParams;
+
+            if (currency === 'inr') {
+              insertQuery = `
+                INSERT INTO withdrawl (
+                  userId, balance, cryptoname, bankName,
+                  status, createdOn
+                ) VALUES (?, ?, ?, ?, ?, NOW())
+              `;
+              insertParams = [userId, amount, currency, bankname, 0];
+            } else {
+              insertQuery = `
+                INSERT INTO withdrawl (
+                  userId, balance, cryptoname, walletAddress,
+                  networkType, status, createdOn
+                ) VALUES (?, ?, ?, ?, ?, ?, NOW())
+              `;
+              insertParams = [userId, amount, currency, walletAddress, network, 0];
+            }
+
+            connection.query(insertQuery, insertParams, (err, result) => {
               if (err) {
                 return connection.rollback(() => {
                   res.status(500).json({
                     success: false,
-                    message: 'Error committing transaction'
+                    message: 'Error creating withdrawal entry'
                   });
                 });
               }
 
-              res.json({
-                success: true,
-                message: 'Withdrawal request created successfully',
-                data: {
-                  withdrawalId: result.insertId,
-                  currency,
-                  amount,
-                  status: 'pending',
-                  ...(currency === 'inr' 
-                    ? { bankname } 
-                    : { walletAddress, network })
+              // 8. Commit transaction
+              connection.commit(err => {
+                if (err) {
+                  return connection.rollback(() => {
+                    res.status(500).json({
+                      success: false,
+                      message: 'Error committing transaction'
+                    });
+                  });
                 }
+
+                res.json({
+                  success: true,
+                  message: 'Withdrawal request created successfully',
+                  data: {
+                    withdrawalId: result.insertId,
+                    currency,
+                    amount,
+                    status: 'pending',
+                    ...(currency === 'inr'
+                      ? { bankname }
+                      : { walletAddress, network })
+                  }
+                });
               });
             });
           });
@@ -170,6 +354,7 @@ router.post('/withdrawl', async (req, res) => {
     });
   }
 });
+
 
 // Get all withdrawal entries with user and bank details based on status
 router.get('/withdrawl-requests/:status', async (req, res) => {
