@@ -7,6 +7,7 @@ const { creditCommissions } = require('../utils/commissionScheduler');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const moment = require('moment');
 const { generateAccessToken, generateRefreshToken, verifyRefreshToken } = require('../utils/jwt');
 const authenticateToken = require('../middleware/authenticateToken');
 const router = express.Router();
@@ -250,50 +251,8 @@ const propagateReferral = async (newUserId, referrerId) => {
     level++;
   }
 };
-router.get("/referrals/:userId", async (req, res) => {
-  const { userId } = req.params;
 
-  try {
-    // Get all referrals for this user up to level 5
-    const referrals = await new Promise((resolve, reject) => {
-      const sql = `
-          SELECT 
-            u.id,
-            u.name,
-            u.username,
-            u.email,
-            DATE(u.created_at) AS join_date,
-            r.level,
-            (SELECT d.amount FROM deposits d WHERE d.userId = u.id ORDER BY d.created_at ASC LIMIT 1) AS first_deposit,
-            (SELECT SUM(d.amount) FROM deposits d WHERE d.userId = u.id) AS total_deposit,
-            (SELECT SUM(b.amount) FROM bets b WHERE b.user_id = u.id) AS total_bets,            
-            (SELECT IFNULL(SUM(c.amount), 0) FROM referralcommissionhistory c WHERE c.user_id = ? AND c.referred_user_id = u.id AND c.credited = 0 ) AS pending_commission
-            FROM referrals r JOIN users u ON r.referred_id = u.id WHERE r.referrer_id = ? ORDER BY r.level
-        `;
-      const [referrerId] = [req.params.userId];
 
-      connection.query(sql, [referrerId, referrerId], (err, results) => {
-        if (err) return reject(err);
-        resolve(results);
-      });
-    });
-
-    // Group referrals by level
-    const referralsByLevel = {};
-    for (let i = 1; i <= 5; i++) {
-      referralsByLevel[`level${i}`] = referrals.filter(ref => ref.level === i);
-    }
-
-    res.json({
-      userId,
-      totalReferrals: referrals.length,
-      referralsByLevel
-    });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Server error" });
-  }
-});
 
 
 router.get("/referrals/today-summary/:userId", async (req, res) => {
@@ -376,6 +335,99 @@ router.get("/referrals/today-summary/:userId", async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 });
+
+
+router.get("/referralsbydate/:userId", async (req, res) => {
+  const { userId } = req.params;
+  const { dateType } = req.query;
+
+  // Optional date filter logic
+ const getDateRange = (type) => {
+  let startDate, endDate;
+
+  switch (type) {
+    case "today":
+      startDate = moment().startOf("day").format("YYYY-MM-DD");
+      endDate = moment().endOf("day").format("YYYY-MM-DD");
+      break;
+
+    case "yesterday":
+      startDate = moment().subtract(1, "days").startOf("day").format("YYYY-MM-DD");
+      endDate = moment().subtract(1, "days").endOf("day").format("YYYY-MM-DD");
+      break;
+
+    case "lastMonth":
+      startDate = moment().subtract(1, "months").startOf("month").format("YYYY-MM-DD");
+      endDate = moment().subtract(1, "months").endOf("month").format("YYYY-MM-DD");
+      break;
+
+    default:
+      startDate = null;
+      endDate = null;
+  }
+
+  return { startDate, endDate };
+};
+
+
+  const { startDate, endDate } = getDateRange(dateType);
+
+  try {
+    const referrals = await new Promise((resolve, reject) => {
+      let sql = `
+        SELECT 
+          u.id,
+          u.name,
+          u.username,
+          u.email,
+          DATE(u.created_at) AS join_date,
+          r.level,
+          (SELECT d.amount FROM deposits d WHERE d.userId = u.id ORDER BY d.created_at ASC LIMIT 1) AS first_deposit,
+          (SELECT SUM(d.amount) FROM deposits d WHERE d.userId = u.id) AS total_deposit,
+          (SELECT SUM(b.amount) FROM bets b WHERE b.user_id = u.id) AS total_bets,
+          (SELECT IFNULL(SUM(c.amount), 0) FROM referralcommissionhistory c 
+            WHERE c.user_id = ? AND c.referred_user_id = u.id AND c.credited = 0) AS pending_commission
+        FROM referrals r 
+        JOIN users u ON r.referred_id = u.id 
+        WHERE r.referrer_id = ?
+      `;
+
+      const params = [userId, userId];
+
+      if (startDate && endDate) {
+        sql += ` AND DATE(u.created_at) BETWEEN ? AND ?`;
+        params.push(startDate, endDate);
+      }
+
+      sql += ` ORDER BY r.level`;
+
+      connection.query(sql, params, (err, results) => {
+        if (err) return reject(err);
+        resolve(results);
+      });
+    });
+
+    // Group referrals by level
+    const referralsByLevel = {};
+    for (let i = 1; i <= 5; i++) {
+      referralsByLevel[`level${i}`] = referrals.filter(ref => ref.level === i);
+    }
+
+    res.json({
+      userId,
+      dateType: dateType || "all",
+      dateRange: startDate ? { startDate, endDate } : "All Time",
+      totalReferrals: referrals.length,
+      referralsByLevel
+    });
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+
 
 
 
@@ -569,8 +621,6 @@ router.post('/refresh', (req, res) => {
 });
 
 
-
-
 // ============= LOGOUT ====================
 
 router.post('/logout', (req, res) => {
@@ -613,8 +663,441 @@ router.post('/logout', (req, res) => {
   );
 });
 
+// ======== Get all users' successful withdrawals and deposits in a date range=====
+router.get('/report/transactions', async (req, res) => {
+  try {
+    let { start, end } = req.query;
+
+    if (!start || !end) {
+      return res.status(400).json({
+        success: false,
+        message: "Start and end date are required (YYYY-MM-DD)"
+      });
+    }
+
+    start = `${start} 00:00:00`;
+    end = `${end} 23:59:59`;
+
+    // --- DEPOSIT QUERY (with phone) ---
+    const depositQuery = `
+      SELECT 
+        'deposit' AS type,
+        d.id,
+        d.userId,
+        d.amount,
+        d.cryptoname,
+        d.created_at AS date,
+        u.name,
+        u.email,
+        u.phone
+      FROM deposits d
+      LEFT JOIN users u ON d.userId = u.id
+      WHERE d.cryptoname = 'INR'
+        AND d.created_at >= ? AND d.created_at <= ?
+      ORDER BY d.created_at DESC
+    `;
+
+    // --- WITHDRAWAL QUERY (with phone) ---
+    const withdrawalQuery = `
+      SELECT 
+        'withdrawal' AS type,
+        w.id,
+        w.userId,
+        w.balance AS amount,
+        w.cryptoname,
+        w.createdOn AS date,
+        u.name,
+        u.email,
+        u.phone
+      FROM withdrawl w
+      LEFT JOIN users u ON w.userId = u.id
+      WHERE w.cryptoname = 'INR'
+        AND (w.status = 1 OR w.status = '1')
+        AND w.createdOn >= ? AND w.createdOn <= ?
+      ORDER BY w.createdOn DESC
+    `;
+
+    const [deposits, withdrawals] = await Promise.all([
+      new Promise((resolve, reject) => {
+        connection.query(depositQuery, [start, end], (err, results) => {
+          if (err) return reject(err);
+          resolve(results);
+        });
+      }),
+      new Promise((resolve, reject) => {
+        connection.query(withdrawalQuery, [start, end], (err, results) => {
+          if (err) return reject(err);
+          resolve(results);
+        });
+      })
+    ]);
+
+    const allTransactions = [...deposits, ...withdrawals].sort(
+      (a, b) => new Date(b.date) - new Date(a.date)
+    );
+
+    res.json({
+      success: true,
+      start_date: start,
+      end_date: end,
+      total_deposits: deposits.length,
+      total_withdrawals: withdrawals.length,
+      total_transactions: allTransactions.length,
+      transactions: allTransactions.map(txn => ({
+        ...txn,
+        name: txn.name || 'Unknown User',
+        email: txn.email || 'N/A',
+        phone: txn.phone || 'N/A'
+      }))
+    });
+
+  } catch (error) {
+    console.error('Error generating transaction report:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error generating transaction report',
+      error: error.message
+    });
+  }
+});
 
 
+router.get('/statistics', async (req, res) => {
+  try {
+    const dummyActivePlayers = 15000;
+    const dummyPrizePool = 100000;
+    const dummyAverageRating = 4.3;
+
+    const activePlayersQuery = "SELECT COUNT(*) as activePlayers FROM users WHERE kycstatus = 1";
+    const activePlayersResult = await new Promise((resolve, reject) => {
+      connection.query(activePlayersQuery, (err, results) => {
+        if (err) {
+          console.error('Error fetching active players:', err);
+          resolve(dummyActivePlayers);
+        } else {
+          resolve(results[0]?.activePlayers || dummyActivePlayers);
+        }
+      });
+    });
+
+
+    const prizePoolQuery = "SELECT SUM(balance) as prizePool FROM wallet WHERE cryptoname = 'INR'";
+    const prizePoolResult = await new Promise((resolve, reject) => {
+      connection.query(prizePoolQuery, (err, results) => {
+        if (err) {
+          console.error('Error fetching prize pool:', err);
+          resolve(dummyPrizePool);
+        } else {
+          resolve(results[0]?.prizePool || dummyPrizePool);
+        }
+      });
+    });
+
+    const ratingsQuery = "SELECT AVG(rating) as averageRating FROM ratings";
+    const ratingsResult = await new Promise((resolve, reject) => {
+      connection.query(ratingsQuery, (err, results) => {
+        if (err) {
+          console.error('Error fetching ratings:', err);
+          resolve(dummyAverageRating);
+        } else {
+          resolve(results[0]?.averageRating || dummyAverageRating);
+        }
+      });
+    });
+
+    res.status(200).json({
+      activePlayers: activePlayersResult,
+      prizePool: prizePoolResult,
+      averageRating: ratingsResult,
+    });
+  } catch (error) {
+    console.error('Error fetching statistics:', error);
+    res.status(500).json({ error: 'Error fetching statistics' });
+  }
+});
+
+// ===================== Get all users with related data =====================
+router.get('/all-users-data', async (req, res) => {
+  try {
+    //  Get all users
+    const userQuery = "SELECT * FROM users";
+    const allUsers = await new Promise((resolve, reject) => {
+      connection.query(userQuery, (err, results) => {
+        if (err) return reject(err);
+        resolve(results);
+      });
+    });
+
+    if (!allUsers.length) {
+      return res.status(404).json({ success: false, error: 'No users found' });
+    }
+
+    //  For each user, fetch related info
+    const allUsersData = await Promise.all(allUsers.map(async (user) => {
+      const userId = user.id;
+
+      //  Wallet
+      const walletDetails = await new Promise((resolve, reject) => {
+        connection.query("SELECT * FROM wallet WHERE userId = ?", [userId], (err, results) => {
+          if (err) return reject(err);
+          resolve(results);
+        });
+      });
+
+      //  Bank
+      const bankDetails = await new Promise((resolve, reject) => {
+        connection.query("SELECT * FROM bankaccount WHERE userId = ?", [userId], (err, results) => {
+          if (err) return reject(err);
+          resolve(results);
+        });
+      });
+
+      //  Referrals
+      const referralDetails = await new Promise((resolve, reject) => {
+        const query = `
+          SELECT r.*, u.username as referred_username 
+          FROM referrals r 
+          JOIN users u ON r.referred_id = u.id 
+          WHERE r.referrer_id = ?
+        `;
+        connection.query(query, [userId], (err, results) => {
+          if (err) return reject(err);
+          resolve(results);
+        });
+      });
+
+      //  Withdrawals
+      const withdrawalDetails = await new Promise((resolve, reject) => {
+        connection.query("SELECT * FROM withdrawl WHERE userId = ?", [userId], (err, results) => {
+          if (err) return reject(err);
+          resolve(results);
+        });
+      });
+
+      //  KYC from user_kyc_requests
+      const kycResults = await new Promise((resolve, reject) => {
+        connection.query(
+          "SELECT aadhar_front, aadhar_back, pan, status, kyc_note FROM user_kyc_requests WHERE user_id = ?",
+          [userId],
+          (err, results) => {
+            if (err) return reject(err);
+            resolve(results);
+          }
+        );
+      });
+
+      const kycDetails = kycResults.length > 0 ? kycResults[0] : {
+        status: "not_requested",
+        aadhar_front: null,
+        aadhar_back: null,
+        pan: null,
+        kyc_note: null
+      };
+
+      //  Return full user block
+      return {
+        user: {
+          ...user,
+          password: undefined // hide password
+        },
+        wallet: walletDetails,
+        bankAccounts: bankDetails,
+        referrals: referralDetails,
+        withdrawals: withdrawalDetails,
+        kyc: kycDetails
+      };
+    }));
+
+    //  Response
+    res.json({
+      success: true,
+      message: 'All users data retrieved successfully',
+      totalUsers: allUsersData.length,
+      data: allUsersData
+    });
+
+  } catch (error) {
+    console.error('Error fetching all users data:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching users data',
+      error: error.message
+    });
+  }
+});
+
+// ==============test cron job to credit commissions================
+router.get('/test/run-cron', async (req, res) => {
+
+
+  try {
+    await creditCommissions();
+    res.send('Commission cron job executed successfully.');
+  } catch (err) {
+    console.error(" Cron Execution Failed:", err.message || err);
+    res.status(500).send(' Error in cron job');
+  }
+});
+
+
+
+//===== Get user's successful withdrawals and deposits in a date range ===
+router.get('/report/transactions/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    let { start, end } = req.query;
+
+    // Validate input
+    if (!userId || isNaN(userId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Valid userId is required"
+      });
+    }
+
+    if (!start || !end) {
+      return res.status(400).json({
+        success: false,
+        message: "Start and end date are required (YYYY-MM-DD)"
+      });
+    }
+
+    start = `${start} 00:00:00`;
+    end = `${end} 23:59:59`;
+
+    // --- DEPOSIT QUERY (with cryptoname = INR) ---
+    const depositQuery = `
+      SELECT 
+        'deposit' AS type,
+        d.id,
+        d.userId,
+        d.amount,
+        d.cryptoname,
+        d.created_at AS date,
+        u.name,
+        u.email
+      FROM deposits d
+      LEFT JOIN users u ON d.userId = u.id
+      WHERE d.userId = ? AND d.cryptoname = 'INR'
+        AND d.created_at >= ? AND d.created_at <= ?
+      ORDER BY d.created_at DESC
+    `;
+
+    // --- WITHDRAWAL QUERY (with cryptoname = INR) ---
+    const withdrawalQuery = `
+      SELECT 
+        'withdrawal' AS type,
+        w.id,
+        w.userId,
+        w.balance AS amount,
+        w.cryptoname,
+        w.createdOn AS date,
+        u.name,
+        u.email
+      FROM withdrawl w
+      LEFT JOIN users u ON w.userId = u.id
+      WHERE w.userId = ? AND w.cryptoname = 'INR'
+        AND (w.status = 1 OR w.status = '1')
+        AND w.createdOn >= ? AND w.createdOn <= ?
+      ORDER BY w.createdOn DESC
+    `;
+
+    const [deposits, withdrawals] = await Promise.all([
+      new Promise((resolve, reject) => {
+        connection.query(depositQuery, [userId, start, end], (err, results) => {
+          if (err) return reject(err);
+          resolve(results);
+        });
+      }),
+      new Promise((resolve, reject) => {
+        connection.query(withdrawalQuery, [userId, start, end], (err, results) => {
+          if (err) return reject(err);
+          resolve(results);
+        });
+      })
+    ]);
+
+    const allTransactions = [...deposits, ...withdrawals].sort(
+      (a, b) => new Date(b.date) - new Date(a.date)
+    );
+
+    //  response formatting
+    res.json({
+      success: true,
+      userId: parseInt(userId),
+      start_date: start,
+      end_date: end,
+      total_deposits: deposits.length,
+      total_withdrawals: withdrawals.length,
+      total_transactions: allTransactions.length,
+      transactions: allTransactions.map(txn => ({
+        ...txn,
+        name: txn.name || 'Unknown User',
+        email: txn.email || 'N/A'
+      }))
+    });
+  } catch (error) {
+    console.error('Error generating transaction report:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error generating transaction report',
+      error: error.message
+    });
+  }
+});
+
+
+
+//--------------------------------------- Protected Routes----------------------
+
+router.use(authenticateToken);
+
+//----------------------------------------------------------------------------------
+
+router.get("/referrals/:userId", async (req, res) => {
+  const { userId } = req.params;
+
+  try {
+    // Get all referrals for this user up to level 5
+    const referrals = await new Promise((resolve, reject) => {
+      const sql = `
+          SELECT 
+            u.id,
+            u.name,
+            u.username,
+            u.email,
+            DATE(u.created_at) AS join_date,
+            r.level,
+            (SELECT d.amount FROM deposits d WHERE d.userId = u.id ORDER BY d.created_at ASC LIMIT 1) AS first_deposit,
+            (SELECT SUM(d.amount) FROM deposits d WHERE d.userId = u.id) AS total_deposit,
+            (SELECT SUM(b.amount) FROM bets b WHERE b.user_id = u.id) AS total_bets,            
+            (SELECT IFNULL(SUM(c.amount), 0) FROM referralcommissionhistory c WHERE c.user_id = ? AND c.referred_user_id = u.id AND c.credited = 0 ) AS pending_commission
+            FROM referrals r JOIN users u ON r.referred_id = u.id WHERE r.referrer_id = ? ORDER BY r.level
+        `;
+      const [referrerId] = [req.params.userId];
+
+      connection.query(sql, [referrerId, referrerId], (err, results) => {
+        if (err) return reject(err);
+        resolve(results);
+      });
+    });
+
+    // Group referrals by level
+    const referralsByLevel = {};
+    for (let i = 1; i <= 5; i++) {
+      referralsByLevel[`level${i}`] = referrals.filter(ref => ref.level === i);
+    }
+
+    res.json({
+      userId,
+      totalReferrals: referrals.length,
+      referralsByLevel
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Server error" });
+  }
+});
 
 // Get all users
 router.get('/allusers', async (req, res) => {
@@ -648,6 +1131,8 @@ router.get('/allusers', async (req, res) => {
     res.status(500).json({ error: 'Error fetching users' });
   }
 });
+
+
 
 //Get one user by id
 router.get('/user/:id',async (req, res) => {
@@ -950,7 +1435,6 @@ router.put("/:id/kyc", async (req, res) => {
 
 
 
-
 // add balance for existing balance for a specific cryptoname and userId
 router.put('/wallet/balance', async (req, res) => {
   const { userId, cryptoname, balance } = req.body;
@@ -1031,184 +1515,6 @@ router.put('/wallet/balance/set', async (req, res) => {
   }
 });
 
-router.get('/statistics', async (req, res) => {
-  try {
-    const dummyActivePlayers = 15000;
-    const dummyPrizePool = 100000;
-    const dummyAverageRating = 4.3;
-
-    const activePlayersQuery = "SELECT COUNT(*) as activePlayers FROM users WHERE kycstatus = 1";
-    const activePlayersResult = await new Promise((resolve, reject) => {
-      connection.query(activePlayersQuery, (err, results) => {
-        if (err) {
-          console.error('Error fetching active players:', err);
-          resolve(dummyActivePlayers);
-        } else {
-          resolve(results[0]?.activePlayers || dummyActivePlayers);
-        }
-      });
-    });
-
-
-    const prizePoolQuery = "SELECT SUM(balance) as prizePool FROM wallet WHERE cryptoname = 'INR'";
-    const prizePoolResult = await new Promise((resolve, reject) => {
-      connection.query(prizePoolQuery, (err, results) => {
-        if (err) {
-          console.error('Error fetching prize pool:', err);
-          resolve(dummyPrizePool);
-        } else {
-          resolve(results[0]?.prizePool || dummyPrizePool);
-        }
-      });
-    });
-
-    const ratingsQuery = "SELECT AVG(rating) as averageRating FROM ratings";
-    const ratingsResult = await new Promise((resolve, reject) => {
-      connection.query(ratingsQuery, (err, results) => {
-        if (err) {
-          console.error('Error fetching ratings:', err);
-          resolve(dummyAverageRating);
-        } else {
-          resolve(results[0]?.averageRating || dummyAverageRating);
-        }
-      });
-    });
-
-    res.status(200).json({
-      activePlayers: activePlayersResult,
-      prizePool: prizePoolResult,
-      averageRating: ratingsResult,
-    });
-  } catch (error) {
-    console.error('Error fetching statistics:', error);
-    res.status(500).json({ error: 'Error fetching statistics' });
-  }
-});
-
-// router.post('/deposit', async (req, res) => {
-//   const { userId, amount, cryptoname } = req.body;
-//   const { calculateCommissions } = require('../utils/commission');
-
-//   const validCryptos = ['BTC', 'ETH', 'LTC', 'USDT', 'SOL', 'DOGE', 'BCH', 'XRP', 'TRX', 'EOS', 'INR', 'CP'];
-
-//   if (!userId || !amount || amount <= 0 || !cryptoname) {
-//     return res.status(400).json({ error: 'userId, amount (positive), and cryptoname are required fields.' });
-//   }
-
-//   if (!validCryptos.includes(cryptoname)) {
-//     return res.status(400).json({ error: 'Invalid cryptoname.' });
-//   }
-
-//   try {
-//     await new Promise((resolve, reject) => {
-//       connection.beginTransaction(err => {
-//         if (err) return reject(err);
-//         resolve();
-//       });
-//     });
-
-//     const userQuery = "SELECT id, referred_by FROM users WHERE id = ?";
-//     const [userResult] = await new Promise((resolve, reject) => {
-//       connection.query(userQuery, [userId], (err, results) => {
-//         if (err) return reject(err);
-//         resolve(results);
-//       });
-//     });
-
-//     if (!userResult) {
-//       throw new Error('User not found');
-//     }
-
-//     const depositCheckQuery = "SELECT id FROM deposits WHERE userId = ? AND cryptoname = ? LIMIT 1";
-//     const [depositResult] = await new Promise((resolve, reject) => {
-//       connection.query(depositCheckQuery, [userId, cryptoname], (err, results) => {
-//         if (err) return reject(err);
-//         resolve(results);
-//       });
-//     });
-
-//     const isFirstDeposit = !depositResult;
-
-//     const updateWalletQuery = `
-//             UPDATE wallet
-//             SET balance = balance + ?
-//             WHERE userId = ? AND cryptoname = ?
-//         `;
-//     const walletResult = await new Promise((resolve, reject) => {
-//       connection.query(updateWalletQuery, [amount, userId, cryptoname], (err, results) => {
-//         if (err) return reject(err);
-//         resolve(results);
-//       });
-//     });
-
-//     if (walletResult.affectedRows === 0) {
-//       throw new Error(`Wallet entry for ${cryptoname} not found for the specified userId.`);
-//     }
-
-//     const insertDepositQuery = `
-//             INSERT INTO deposits (userId, amount, cryptoname, is_first)
-//             VALUES (?, ?, ?, ?)
-//         `;
-//     await new Promise((resolve, reject) => {
-//       connection.query(insertDepositQuery, [userId, amount, cryptoname, isFirstDeposit], (err, results) => {
-//         if (err) return reject(err);
-//         resolve(results);
-//       });
-//     });
-
-//     let commissionsDistributed = false;
-//     if (isFirstDeposit) {
-//       const referrerId = userResult.referred_by || null;
-//       if (referrerId) {
-//         const commissions = await calculateCommissions(amount, referrerId, cryptoname, connection);
-//         for (const commission of commissions) {
-//           const logQuery = `
-//                         INSERT INTO referralcommissionhistory (user_id, referred_user_id, level, rebate_level, amount, deposit_amount, cryptoname, credited)
-//                         VALUES (?, ?, ?, ?, ?, ?, ?, FALSE)
-//                     `;
-//           await new Promise((resolve, reject) => {
-//             connection.query(logQuery, [
-//               commission.userId,
-//               userId,
-//               commission.level,
-//               commission.rebateLevel,
-//               commission.commission,
-//               amount,
-//               cryptoname
-//             ], (err, results) => {
-//               if (err) return reject(err);
-//               resolve(results);
-//             });
-//           });
-//         }
-//         commissionsDistributed = true;
-//       }
-//     }
-
-//     await new Promise((resolve, reject) => {
-//       connection.commit(err => {
-//         if (err) return reject(err);
-//         resolve();
-//       });
-//     });
-
-//     res.json({
-//       message: `Deposit in ${cryptoname} processed successfully`,
-//       userId,
-//       cryptoname,
-//       amount,
-//       isFirstDeposit,
-//       commissionsDistributed,
-//       note: commissionsDistributed ? 'Commissions will be credited to wallets at 12:00 AM IST' : undefined
-//     });
-//   } catch (error) {
-//     console.error(`Error processing deposit in ${cryptoname}:`, error);
-//     await new Promise((resolve) => {
-//       connection.rollback(() => resolve());
-//     });
-//     res.status(error.message === 'User not found' || error.message.includes('Wallet entry') ? 404 : 500).json({ error: error.message || 'Internal server error' });
-//   }
-// });
 
 router.post('/deposit', async (req, res) => {
   const { userId, amount, cryptoname, orderid } = req.body;
@@ -1484,19 +1790,6 @@ router.get('/pending-commissions/:userId', async (req, res) => {
   }
 });
 
-// ==============test cron job to credit commissions================
-router.get('/test/run-cron', async (req, res) => {
-
-
-  try {
-    await creditCommissions();
-    res.send('Commission cron job executed successfully.');
-  } catch (err) {
-    console.error(" Cron Execution Failed:", err.message || err);
-    res.status(500).send(' Error in cron job');
-  }
-});
-
 
 
 //============== Get  user related all data by userId =================
@@ -1702,206 +1995,6 @@ router.get('/user-all-data/:userId', async (req, res) => {
 
 
 
-// ===================== Get all users with related data =====================
-// router.get('/all-users-data', async (req, res) => {
-//   try {
-//     // Get all users basic information
-//     const userQuery = "SELECT * FROM users";
-//     const allUsers = await new Promise((resolve, reject) => {
-//       connection.query(userQuery, (err, results) => {
-//         if (err) reject(err);
-//         resolve(results);
-//       });
-//     });
-
-//     if (!allUsers.length) {
-//       return res.status(404).json({ error: 'No users found' });
-//     }
-
-//     // Get all related data for each user
-//     const allUsersData = await Promise.all(allUsers.map(async (user) => {
-//       // Get wallet information
-//       const walletQuery = "SELECT * FROM wallet WHERE userId = ?";
-//       const walletDetails = await new Promise((resolve, reject) => {
-//         connection.query(walletQuery, [user.id], (err, results) => {
-//           if (err) reject(err);
-//           resolve(results);
-//         });
-//       });
-
-//       // Get bank account information
-//       const bankQuery = "SELECT * FROM bankaccount WHERE userId = ?";
-//       const bankDetails = await new Promise((resolve, reject) => {
-//         connection.query(bankQuery, [user.id], (err, results) => {
-//           if (err) reject(err);
-//           resolve(results);
-//         });
-//       });
-
-//       // Get referral information
-//       const referralQuery = `
-//         SELECT r.*, u.username as referred_username 
-//         FROM referrals r 
-//         JOIN users u ON r.referred_id = u.id 
-//         WHERE r.referrer_id = ?`;
-//       const referralDetails = await new Promise((resolve, reject) => {
-//         connection.query(referralQuery, [user.id], (err, results) => {
-//           if (err) reject(err);
-//           resolve(results);
-//         });
-//       });
-
-//       // Get withdrawal information
-//       const withdrawalQuery = "SELECT * FROM withdrawl WHERE userId = ?";
-//       const withdrawalDetails = await new Promise((resolve, reject) => {
-//         connection.query(withdrawalQuery, [user.id], (err, results) => {
-//           if (err) reject(err);
-//           resolve(results);
-//         });
-//       });
-
-//       // Return combined user data
-//       return {
-//         user: {
-//           ...user,
-//           password: undefined // Remove sensitive data
-//         },
-//         wallet: walletDetails,
-//         bankAccounts: bankDetails,
-//         referrals: referralDetails,
-//         withdrawals: withdrawalDetails,
-//         kyc: {
-//           status: user.kycstatus,
-//           aadhar: user.aadhar,
-//           pan: user.pan
-//         }
-//       };
-//     }));
-
-//     res.json({
-//       success: true,
-//       message: 'All users data retrieved successfully',
-//       totalUsers: allUsersData.length,
-//       data: allUsersData
-//     });
-
-//   } catch (error) {
-//     console.error('Error fetching all users data:', error);
-//     res.status(500).json({
-//       success: false,
-//       message: 'Error fetching users data',
-//       error: error.message
-//     });
-//   }
-// });
-router.get('/all-users-data', async (req, res) => {
-  try {
-    //  Get all users
-    const userQuery = "SELECT * FROM users";
-    const allUsers = await new Promise((resolve, reject) => {
-      connection.query(userQuery, (err, results) => {
-        if (err) return reject(err);
-        resolve(results);
-      });
-    });
-
-    if (!allUsers.length) {
-      return res.status(404).json({ success: false, error: 'No users found' });
-    }
-
-    //  For each user, fetch related info
-    const allUsersData = await Promise.all(allUsers.map(async (user) => {
-      const userId = user.id;
-
-      //  Wallet
-      const walletDetails = await new Promise((resolve, reject) => {
-        connection.query("SELECT * FROM wallet WHERE userId = ?", [userId], (err, results) => {
-          if (err) return reject(err);
-          resolve(results);
-        });
-      });
-
-      //  Bank
-      const bankDetails = await new Promise((resolve, reject) => {
-        connection.query("SELECT * FROM bankaccount WHERE userId = ?", [userId], (err, results) => {
-          if (err) return reject(err);
-          resolve(results);
-        });
-      });
-
-      //  Referrals
-      const referralDetails = await new Promise((resolve, reject) => {
-        const query = `
-          SELECT r.*, u.username as referred_username 
-          FROM referrals r 
-          JOIN users u ON r.referred_id = u.id 
-          WHERE r.referrer_id = ?
-        `;
-        connection.query(query, [userId], (err, results) => {
-          if (err) return reject(err);
-          resolve(results);
-        });
-      });
-
-      //  Withdrawals
-      const withdrawalDetails = await new Promise((resolve, reject) => {
-        connection.query("SELECT * FROM withdrawl WHERE userId = ?", [userId], (err, results) => {
-          if (err) return reject(err);
-          resolve(results);
-        });
-      });
-
-      //  KYC from user_kyc_requests
-      const kycResults = await new Promise((resolve, reject) => {
-        connection.query(
-          "SELECT aadhar_front, aadhar_back, pan, status, kyc_note FROM user_kyc_requests WHERE user_id = ?",
-          [userId],
-          (err, results) => {
-            if (err) return reject(err);
-            resolve(results);
-          }
-        );
-      });
-
-      const kycDetails = kycResults.length > 0 ? kycResults[0] : {
-        status: "not_requested",
-        aadhar_front: null,
-        aadhar_back: null,
-        pan: null,
-        kyc_note: null
-      };
-
-      //  Return full user block
-      return {
-        user: {
-          ...user,
-          password: undefined // hide password
-        },
-        wallet: walletDetails,
-        bankAccounts: bankDetails,
-        referrals: referralDetails,
-        withdrawals: withdrawalDetails,
-        kyc: kycDetails
-      };
-    }));
-
-    //  Response
-    res.json({
-      success: true,
-      message: 'All users data retrieved successfully',
-      totalUsers: allUsersData.length,
-      data: allUsersData
-    });
-
-  } catch (error) {
-    console.error('Error fetching all users data:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error fetching users data',
-      error: error.message
-    });
-  }
-});
 
 
 //==================== how many coupons a user have redeem ======== 
@@ -2859,10 +2952,7 @@ router.get('/pending-kyc', async (req, res) => {
 });
 
 
-
-
 //================ Get User Game Transactions =================
-
 router.get('/game-transactions/:userId', async (req, res) => {
   try {
     const { userId } = req.params;
@@ -2972,209 +3062,9 @@ router.get('/game-transactions/:userId', async (req, res) => {
   }
 });
 
-//===== Get user's successful withdrawals and deposits in a date range ===
-router.get('/report/transactions/:userId', async (req, res) => {
-  try {
-    const { userId } = req.params;
-    let { start, end } = req.query;
-
-    // Validate input
-    if (!userId || isNaN(userId)) {
-      return res.status(400).json({
-        success: false,
-        message: "Valid userId is required"
-      });
-    }
-
-    if (!start || !end) {
-      return res.status(400).json({
-        success: false,
-        message: "Start and end date are required (YYYY-MM-DD)"
-      });
-    }
-
-    start = `${start} 00:00:00`;
-    end = `${end} 23:59:59`;
-
-    // --- DEPOSIT QUERY (with cryptoname = INR) ---
-    const depositQuery = `
-      SELECT 
-        'deposit' AS type,
-        d.id,
-        d.userId,
-        d.amount,
-        d.cryptoname,
-        d.created_at AS date,
-        u.name,
-        u.email
-      FROM deposits d
-      LEFT JOIN users u ON d.userId = u.id
-      WHERE d.userId = ? AND d.cryptoname = 'INR'
-        AND d.created_at >= ? AND d.created_at <= ?
-      ORDER BY d.created_at DESC
-    `;
-
-    // --- WITHDRAWAL QUERY (with cryptoname = INR) ---
-    const withdrawalQuery = `
-      SELECT 
-        'withdrawal' AS type,
-        w.id,
-        w.userId,
-        w.balance AS amount,
-        w.cryptoname,
-        w.createdOn AS date,
-        u.name,
-        u.email
-      FROM withdrawl w
-      LEFT JOIN users u ON w.userId = u.id
-      WHERE w.userId = ? AND w.cryptoname = 'INR'
-        AND (w.status = 1 OR w.status = '1')
-        AND w.createdOn >= ? AND w.createdOn <= ?
-      ORDER BY w.createdOn DESC
-    `;
-
-    const [deposits, withdrawals] = await Promise.all([
-      new Promise((resolve, reject) => {
-        connection.query(depositQuery, [userId, start, end], (err, results) => {
-          if (err) return reject(err);
-          resolve(results);
-        });
-      }),
-      new Promise((resolve, reject) => {
-        connection.query(withdrawalQuery, [userId, start, end], (err, results) => {
-          if (err) return reject(err);
-          resolve(results);
-        });
-      })
-    ]);
-
-    const allTransactions = [...deposits, ...withdrawals].sort(
-      (a, b) => new Date(b.date) - new Date(a.date)
-    );
-
-    //  response formatting
-    res.json({
-      success: true,
-      userId: parseInt(userId),
-      start_date: start,
-      end_date: end,
-      total_deposits: deposits.length,
-      total_withdrawals: withdrawals.length,
-      total_transactions: allTransactions.length,
-      transactions: allTransactions.map(txn => ({
-        ...txn,
-        name: txn.name || 'Unknown User',
-        email: txn.email || 'N/A'
-      }))
-    });
-  } catch (error) {
-    console.error('Error generating transaction report:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error generating transaction report',
-      error: error.message
-    });
-  }
-});
 
 
-// ======== Get all users' successful withdrawals and deposits in a date range=====
-router.get('/report/transactions', async (req, res) => {
-  try {
-    let { start, end } = req.query;
 
-    if (!start || !end) {
-      return res.status(400).json({
-        success: false,
-        message: "Start and end date are required (YYYY-MM-DD)"
-      });
-    }
-
-    start = `${start} 00:00:00`;
-    end = `${end} 23:59:59`;
-
-    // --- DEPOSIT QUERY (with phone) ---
-    const depositQuery = `
-      SELECT 
-        'deposit' AS type,
-        d.id,
-        d.userId,
-        d.amount,
-        d.cryptoname,
-        d.created_at AS date,
-        u.name,
-        u.email,
-        u.phone
-      FROM deposits d
-      LEFT JOIN users u ON d.userId = u.id
-      WHERE d.cryptoname = 'INR'
-        AND d.created_at >= ? AND d.created_at <= ?
-      ORDER BY d.created_at DESC
-    `;
-
-    // --- WITHDRAWAL QUERY (with phone) ---
-    const withdrawalQuery = `
-      SELECT 
-        'withdrawal' AS type,
-        w.id,
-        w.userId,
-        w.balance AS amount,
-        w.cryptoname,
-        w.createdOn AS date,
-        u.name,
-        u.email,
-        u.phone
-      FROM withdrawl w
-      LEFT JOIN users u ON w.userId = u.id
-      WHERE w.cryptoname = 'INR'
-        AND (w.status = 1 OR w.status = '1')
-        AND w.createdOn >= ? AND w.createdOn <= ?
-      ORDER BY w.createdOn DESC
-    `;
-
-    const [deposits, withdrawals] = await Promise.all([
-      new Promise((resolve, reject) => {
-        connection.query(depositQuery, [start, end], (err, results) => {
-          if (err) return reject(err);
-          resolve(results);
-        });
-      }),
-      new Promise((resolve, reject) => {
-        connection.query(withdrawalQuery, [start, end], (err, results) => {
-          if (err) return reject(err);
-          resolve(results);
-        });
-      })
-    ]);
-
-    const allTransactions = [...deposits, ...withdrawals].sort(
-      (a, b) => new Date(b.date) - new Date(a.date)
-    );
-
-    res.json({
-      success: true,
-      start_date: start,
-      end_date: end,
-      total_deposits: deposits.length,
-      total_withdrawals: withdrawals.length,
-      total_transactions: allTransactions.length,
-      transactions: allTransactions.map(txn => ({
-        ...txn,
-        name: txn.name || 'Unknown User',
-        email: txn.email || 'N/A',
-        phone: txn.phone || 'N/A'
-      }))
-    });
-
-  } catch (error) {
-    console.error('Error generating transaction report:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error generating transaction report',
-      error: error.message
-    });
-  }
-});
 
 
 
