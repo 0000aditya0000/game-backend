@@ -869,7 +869,1065 @@ router.get('/report/transactions/:userId', async (req, res) => {
   }
 });
 
+// Get all users
+router.get('/allusers', async (req, res) => {
+  try {
+    const query = `
+      SELECT 
+        u.*, 
+        COALESCE(
+          CONCAT('[', 
+            GROUP_CONCAT(
+              JSON_OBJECT('cryptoname', w.cryptoname, 'balance', w.balance)
+            ), 
+          ']'), 
+          '[]'
+        ) AS wallets
+      FROM users u
+      LEFT JOIN wallet w ON u.id = w.userId
+      GROUP BY u.id
+    `;
 
+    connection.query(query, (err, results) => {
+      if (err) return res.status(500).json({ error: 'Database query error' });
+
+      results.forEach(user => {
+        user.wallets = JSON.parse(user.wallets);
+      });
+
+      res.json(results);
+    });
+  } catch (error) {
+    res.status(500).json({ error: 'Error fetching users' });
+  }
+});
+
+//============== Get  user related all data by userId =================
+
+// router.get('/user-all-data/:userId', async (req, res) => {
+//   const userId = req.params.userId;
+
+//   try {
+//     // Get user basic information
+//     const userQuery = "SELECT * FROM users WHERE id = ?";
+//     const [userDetails] = await new Promise((resolve, reject) => {
+//       connection.query(userQuery, [userId], (err, results) => {
+//         if (err) reject(err);
+//         resolve(results);
+//       });
+//     });
+
+//     if (!userDetails) {
+//       return res.status(404).json({ error: 'User not found' });
+//     }
+
+//     // Get wallet information
+//     const walletQuery = "SELECT * FROM wallet WHERE userId = ?";
+//     const walletDetails = await new Promise((resolve, reject) => {
+//       connection.query(walletQuery, [userId], (err, results) => {
+//         if (err) reject(err);
+//         resolve(results);
+//       });
+//     });
+
+//     // Get bank account information
+//     const bankQuery = "SELECT * FROM bankaccount WHERE userId = ?";
+//     const bankDetails = await new Promise((resolve, reject) => {
+//       connection.query(bankQuery, [userId], (err, results) => {
+//         if (err) reject(err);
+//         resolve(results);
+//       });
+//     });
+
+//     // Get referral information
+//     const referralQuery = `
+//             SELECT r.*, u.username as referred_username 
+//             FROM referrals r 
+//             JOIN users u ON r.referred_id = u.id 
+//             WHERE r.referrer_id = ?`;
+//     const referralDetails = await new Promise((resolve, reject) => {
+//       connection.query(referralQuery, [userId], (err, results) => {
+//         if (err) reject(err);
+//         resolve(results);
+//       });
+//     });
+
+
+//     // Get withdrawal information
+//     const withdrawalQuery = "SELECT * FROM withdrawl WHERE userId = ?";
+//     const withdrawalDetails = await new Promise((resolve, reject) => {
+//       connection.query(withdrawalQuery, [userId], (err, results) => {
+//         if (err) reject(err);
+//         resolve(results);
+//       });
+//     });
+
+
+
+//     // Combine all data
+//     const userData = {
+//       user: {
+//         ...userDetails,
+//         password: undefined // Remove sensitive data
+//       },
+//       wallet: walletDetails,
+//       bankAccounts: bankDetails,
+//       referrals: referralDetails,
+//       withdrawals: withdrawalDetails,
+//       kyc: {
+//         status: userDetails.kycstatus,
+//         aadhar: userDetails.aadhar,
+//         pan: userDetails.pan
+//       }
+//     };
+
+//     res.json({
+//       success: true,
+//       message: 'User data retrieved successfully',
+//       data: userData
+//     });
+
+//   } catch (error) {
+//     console.error('Error fetching user data:', error);
+//     res.status(500).json({
+//       success: false,
+//       message: 'Error fetching user data',
+//       error: error.message
+//     });
+//   }
+// });
+
+router.get('/user-all-data/:userId', async (req, res) => {
+  const userId = req.params.userId;
+
+  try {
+    //  Get user basic info
+    const userResults = await new Promise((resolve, reject) => {
+      connection.query("SELECT * FROM users WHERE id = ?", [userId], (err, results) => {
+        if (err) return reject(err);
+        resolve(results);
+      });
+    });
+
+    if (!userResults || userResults.length === 0) {
+      return res.status(404).json({ success: false, error: 'User not found' });
+    }
+
+    const user = userResults[0];
+
+    //  Get wallet info
+    const walletDetails = await new Promise((resolve, reject) => {
+      connection.query("SELECT * FROM wallet WHERE userId = ?", [userId], (err, results) => {
+        if (err) return reject(err);
+        resolve(results);
+      });
+    });
+
+    //  Get bank accounts
+    const bankDetails = await new Promise((resolve, reject) => {
+      connection.query("SELECT * FROM bankaccount WHERE userId = ?", [userId], (err, results) => {
+        if (err) return reject(err);
+        resolve(results);
+      });
+    });
+
+    //  Get referral info
+    const referralDetails = await new Promise((resolve, reject) => {
+      const query = `
+        SELECT r.*, u.username as referred_username 
+        FROM referrals r 
+        JOIN users u ON r.referred_id = u.id 
+        WHERE r.referrer_id = ?
+      `;
+      connection.query(query, [userId], (err, results) => {
+        if (err) return reject(err);
+        resolve(results);
+      });
+    });
+
+    //  Get withdrawals
+    const withdrawalDetails = await new Promise((resolve, reject) => {
+      connection.query("SELECT * FROM withdrawl WHERE userId = ?", [userId], (err, results) => {
+        if (err) return reject(err);
+        resolve(results);
+      });
+    });
+
+    //  Get KYC details from user_kyc_requests table
+    const kycResults = await new Promise((resolve, reject) => {
+      connection.query(
+        "SELECT aadhar_front, aadhar_back, pan, status, kyc_note FROM user_kyc_requests WHERE user_id = ?",
+        [userId],
+        (err, results) => {
+          if (err) return reject(err);
+          resolve(results);
+        }
+      );
+    });
+
+    const kycDetails = kycResults.length > 0 ? kycResults[0] : {
+      status: "not_requested",
+      aadhar_front: null,
+      aadhar_back: null,
+      pan: null,
+      kyc_note: null
+    };
+
+    //  Final Combined Data
+    const userData = {
+      user: {
+        ...user,
+        password: undefined // remove sensitive field
+      },
+      wallet: walletDetails,
+      bankAccounts: bankDetails,
+      referrals: referralDetails,
+      withdrawals: withdrawalDetails,
+      kyc: kycDetails
+    };
+
+    //  Send response
+    res.json({
+      success: true,
+      message: 'User data retrieved successfully',
+      data: userData
+    });
+
+  } catch (error) {
+    console.error('Error fetching user data:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching user data',
+      error: error.message
+    });
+  }
+});
+
+
+
+//================ Get User Game Transactions =================
+router.get('/game-transactions/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 20;
+    const offset = (page - 1) * limit;
+
+    // Query to check if user exists
+    const userQuery = "SELECT id, username FROM users WHERE id = ?";
+    connection.query(userQuery, [userId], (userErr, userResult) => {
+      if (userErr) {
+        console.error('User query error:', userErr);
+        return res.status(500).json({
+          success: false,
+          message: "Error checking user",
+          error: userErr.message
+        });
+      }
+
+      const user = userResult[0];
+      if (!user) {
+        return res.status(404).json({
+          success: false,
+          message: "User not found"
+        });
+      }
+
+      // Query to get total transactions
+      const countQuery = `
+        SELECT COUNT(*) as total 
+        FROM api_turnover 
+        WHERE login = ?
+      `;
+
+      connection.query(countQuery, [userId], (countErr, countResult) => {
+        if (countErr) {
+          console.error('Count query error:', countErr);
+          return res.status(500).json({
+            success: false,
+            message: "Error counting transactions",
+            error: countErr.message
+          });
+        }
+
+        const totalRecords = countResult[0].total;
+        const totalPages = Math.ceil(totalRecords / limit);
+
+        // Query to get paginated transactions
+        const transactionQuery = `
+          SELECT 
+            id as transaction_id,
+            cmd as transaction_type,
+            sessionId,
+            bet as bet_amount,
+            date as bet_date,
+            gameId,
+            win as winning_amount,
+            created_at,
+            CASE
+              WHEN win IS NULL THEN 'pending'
+              WHEN win > 0 THEN 'won'
+              ELSE 'lost'
+            END as status
+          FROM api_turnover 
+          WHERE login = ?
+          ORDER BY created_at DESC
+          LIMIT ? OFFSET ?
+        `;
+
+        connection.query(transactionQuery, [userId, limit, offset], (txErr, txResult) => {
+          if (txErr) {
+            console.error('Transaction query error:', txErr);
+            return res.status(500).json({
+              success: false,
+              message: "Error fetching transactions",
+              error: txErr.message
+            });
+          }
+          // Format transaction amounts because they might be strings
+          const transactions = txResult.map(tx => ({
+            ...tx,
+            bet_amount: parseFloat(tx.bet_amount || 0),
+            winning_amount: parseFloat(tx.winning_amount || 0)
+          }));
+
+          res.json({
+            success: true,
+            message: "Game transactions retrieved successfully",
+            pagination: {
+              total_records: totalRecords,
+              total_pages: totalPages,
+              current_page: page,
+              limit: limit
+            },
+            transactions
+          });
+        });
+      });
+    });
+  } catch (error) {
+    console.error('Unexpected error:', error);
+    res.status(500).json({
+      success: false,
+      message: "Unexpected server error",
+      error: error.message
+    });
+  }
+});
+
+
+//================ KYC Approval by Admin =================
+
+// router.put('/kyc/approve/:userId', async (req, res) => {
+//   try {
+//     const userId = req.params.userId;
+//     const { status, note } = req.body; // note is optional, but useful on rejection
+
+
+//     if (![0, 1, 2].includes(Number(status))) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Invalid status value. Use 0 for pending, 1 for approved, 2 for rejected"
+//       });
+//     }
+
+//     // First check if user has uploaded KYC documents
+//     const checkQuery = `
+//       SELECT aadhar_front, aadhar_back, pan, kycstatus 
+//       FROM users 
+//       WHERE id = ?
+//     `;
+
+//     const checkUser = () => {
+//       return new Promise((resolve, reject) => {
+//         connection.query(checkQuery, [userId], (err, results) => {
+//           if (err) {
+//             console.error('Database error in checkQuery:', err);
+//             reject(err);
+//             return;
+//           }
+//           resolve(results);
+//         });
+//       });
+//     };
+
+//     const results = await checkUser();
+
+//     if (!results || results.length === 0) {
+//       return res.status(404).json({
+//         success: false,
+//         message: "User not found"
+//       });
+//     }
+
+//     const user = results[0];
+
+//     if (!user.aadhar_front && !user.pan) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Cannot process KYC. No documents uploaded",
+//         missing_documents: {
+//           aadhar_front: !user.aadhar_front,
+//           aadhar_back: !user.aadhar_back,
+//           pan: !user.pan
+//         }
+//       });
+//     }
+
+//     // Update status + note
+//     const updateQuery = `
+//       UPDATE users 
+//       SET kycstatus = ?, kyc_note = ?
+//       WHERE id = ?
+//     `;
+
+//     const updateStatus = () => {
+//       return new Promise((resolve, reject) => {
+//         connection.query(updateQuery, [status, note || null, userId], (err, result) => {
+//           if (err) {
+//             console.error('Database error in updateQuery:', err);
+//             reject(err);
+//             return;
+//           }
+//           resolve(result);
+//         });
+//       });
+//     };
+
+//     await updateStatus();
+
+//     res.json({
+//       success: true,
+//       message: `KYC ${status === 1 ? 'approved' : status === 2 ? 'rejected' : 'set to pending'} successfully`,
+//       data: {
+//         user_id: userId,
+//         new_status: status,
+//         status_text: status === 1 ? 'Approved' : status === 2 ? 'Rejected' : 'Pending',
+//         documents: {
+//           aadhar: user.aadhar_front ? "Submitted" : "Not submitted",
+//           pan: user.pan ? "Submitted" : "Not submitted"
+//         },
+//         note: note || null
+//       }
+//     });
+
+//   } catch (error) {
+//     console.error('Error processing KYC:', error);
+//     res.status(500).json({
+//       success: false,
+//       message: "Internal server error",
+//       error: error.message
+//     });
+//   }
+// });
+router.put('/kyc/approve/:userId', async (req, res) => {
+  try {
+    const userId = req.params.userId;
+    const { status, note } = req.body;
+
+    // Allowed status values: pending, approved, rejected
+    const validStatuses = ['pending', 'approved', 'rejected'];
+    if (!validStatuses.includes(status)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid status. Use 'pending', 'approved', or 'rejected'."
+      });
+    }
+
+    // Step 1: Check if KYC request exists for this user
+    const checkQuery = `
+      SELECT * FROM user_kyc_requests
+      WHERE user_id = ?
+    `;
+
+    const [kycRequests] = await new Promise((resolve, reject) => {
+      connection.query(checkQuery, [userId], (err, results) => {
+        if (err) return reject(err);
+        resolve(results);
+      });
+    });
+
+    if (!kycRequests) {
+      return res.status(404).json({
+        success: false,
+        message: "No KYC request found for this user."
+      });
+    }
+
+    const user = kycRequests;
+
+    if (!user.aadhar_front && !user.pan) {
+      return res.status(400).json({
+        success: false,
+        message: "Cannot process KYC. No documents uploaded.",
+        missing_documents: {
+          aadhar_front: !user.aadhar_front,
+          aadhar_back: !user.aadhar_back,
+          pan: !user.pan
+        }
+      });
+    }
+
+    // Step 2: Update status and note
+    const updateQuery = `
+      UPDATE user_kyc_requests
+      SET status = ?, kyc_note = ?
+      WHERE user_id = ?
+    `;
+
+    await new Promise((resolve, reject) => {
+      connection.query(updateQuery, [status, note || null, userId], (err, result) => {
+        if (err) return reject(err);
+        resolve(result);
+      });
+    });
+
+    res.json({
+      success: true,
+      message: `KYC ${status} successfully`,
+      data: {
+        user_id: userId,
+        new_status: status,
+        documents: {
+          aadhar_front: user.aadhar_front ? "Submitted" : "Not submitted",
+          aadhar_back: user.aadhar_back ? "Submitted" : "Not submitted",
+          pan: user.pan ? "Submitted" : "Not submitted"
+        },
+        note: note || null
+      }
+    });
+
+  } catch (error) {
+    console.error('Error processing KYC:', error);
+    res.status(500).json({
+      success: false,
+      message: "Internal server error",
+      error: error.message
+    });
+  }
+});
+
+
+//================ Get All Users with Pending KYC =================
+
+// router.get('/pending-kyc', async (req, res) => {
+//   try {
+//     const page = parseInt(req.query.page) || 1;
+//     const status = parseInt(req.query.status); // Get status from query params
+//     const limit = 20;
+//     const offset = (page - 1) * limit;
+
+//     // Validate status parameter
+//     if (![0, 1, 2, 3].includes(status)) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Invalid status value. Use 0 for pending, 1 for approved, 2 for rejected, 3 for all"
+//       });
+//     }
+
+//     // Build WHERE clause based on status
+//     const whereClause = status === 3 ? '' : 'WHERE kycstatus = ?';
+
+//     // Query to get total users based on status
+//     const countQuery = `
+//       SELECT COUNT(*) as total 
+//       FROM users 
+//       ${whereClause}
+//     `;
+
+//     const countParams = status === 3 ? [] : [status];
+
+//     connection.query(countQuery, countParams, (countErr, countResult) => {
+//       if (countErr) {
+//         console.error('Count query error:', countErr);
+//         return res.status(500).json({
+//           success: false,
+//           message: "Error counting KYC users",
+//           error: countErr.message
+//         });
+//       }
+
+//       const totalUsers = countResult[0].total;
+//       const totalPages = Math.ceil(totalUsers / limit);
+
+//       // Now fetch paginated data with updated fields
+//       const dataQuery = `
+//         SELECT 
+//           id,
+//           username,
+//           name,
+//           email,
+//           phone,
+//           aadhar_front,
+//           aadhar_back,
+//           pan,
+//           kycstatus,
+//           my_referral_code
+//         FROM users 
+//         ${whereClause}
+//         ORDER BY id DESC
+//         LIMIT ? OFFSET ?
+//       `;
+
+//       const queryParams = status === 3
+//         ? [limit, offset]
+//         : [status, limit, offset];
+
+//       connection.query(dataQuery, queryParams, (err, results) => {
+//         if (err) {
+//           console.error('Data fetch error:', err);
+//           return res.status(500).json({
+//             success: false,
+//             message: "Error fetching KYC users",
+//             error: err.message
+//           });
+//         }
+
+//         const statusText = {
+//           0: 'Pending',
+//           1: 'Approved',
+//           2: 'Rejected',
+//           3: 'All'
+//         };
+
+//         res.json({
+//           success: true,
+//           message: `${statusText[status]} KYC users retrieved successfully`,
+//           total_items: totalUsers,
+//           total_pages: totalPages,
+//           current_page: page,
+//           items_per_page: limit,
+//           status: status,
+//           status_text: statusText[status],
+//           data: results.map(user => ({
+//             user_id: user.id,
+//             username: user.username,
+//             name: user.name,
+//             email: user.email,
+//             phone: user.phone,
+//             referral_code: user.my_referral_code,
+//             kyc_status: {
+//               code: user.kycstatus,
+//               text: statusText[user.kycstatus]
+//             },
+//             documents: {
+//               aadharfront: user.aadhar_front ? `${user.aadhar_front}` : null,
+//               aadharback: user.aadhar_back ? `${user.aadhar_back}` : null,
+//               pan: user.pan ? `${user.pan}` : null
+//             }
+//           }))
+//         });
+//       });
+//     });
+
+//   } catch (error) {
+//     console.error('Error fetching KYC users:', error);
+//     res.status(500).json({
+//       success: false,
+//       message: "Internal server error",
+//       error: error.message
+//     });
+//   }
+// });
+router.get('/pending-kyc', async (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const status = req.query.status || 'pending'; // Use ENUM value
+    const limit = 20;
+    const offset = (page - 1) * limit;
+
+    const validStatuses = ['pending', 'approved', 'rejected', 'all'];
+    if (!validStatuses.includes(status)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid status. Use 'pending', 'approved', 'rejected', or 'all'."
+      });
+    }
+
+    const whereClause = status === 'all' ? '' : 'WHERE k.status = ?';
+    const countQuery = `
+      SELECT COUNT(*) AS total
+      FROM user_kyc_requests k
+      ${whereClause}
+    `;
+    const countParams = status === 'all' ? [] : [status];
+
+    connection.query(countQuery, countParams, (countErr, countResult) => {
+      if (countErr) {
+        console.error('Count query error:', countErr);
+        return res.status(500).json({
+          success: false,
+          message: "Error counting KYC records",
+          error: countErr.message
+        });
+      }
+
+      const totalItems = countResult[0].total;
+      const totalPages = Math.ceil(totalItems / limit);
+
+      const dataQuery = `
+        SELECT 
+          k.id AS kyc_id,
+          u.id AS user_id,
+          u.username,
+          u.name,
+          u.email,
+          u.phone,
+          u.my_referral_code,
+          k.aadhar_front,
+          k.aadhar_back,
+          k.pan,
+          k.status AS kycstatus,
+          k.kyc_note,
+          k.created_at,
+          k.updated_at
+        FROM user_kyc_requests k
+        JOIN users u ON u.id = k.user_id
+        ${whereClause}
+        ORDER BY k.id DESC
+        LIMIT ? OFFSET ?
+      `;
+
+      const dataParams = status === 'all'
+        ? [limit, offset]
+        : [status, limit, offset];
+
+      connection.query(dataQuery, dataParams, (err, results) => {
+        if (err) {
+          console.error('Data fetch error:', err);
+          return res.status(500).json({
+            success: false,
+            message: "Error fetching KYC requests",
+            error: err.message
+          });
+        }
+
+        res.json({
+          success: true,
+          message: `KYC records for status '${status}' retrieved successfully`,
+          total_items: totalItems,
+          total_pages: totalPages,
+          current_page: page,
+          items_per_page: limit,
+          status,
+          data: results.map(user => ({
+            kyc_id: user.kyc_id,
+            user_id: user.user_id,
+            username: user.username,
+            name: user.name,
+            email: user.email,
+            phone: user.phone,
+            referral_code: user.my_referral_code,
+            kyc_status: {
+              code: user.kycstatus,
+              text: user.kycstatus.charAt(0).toUpperCase() + user.kycstatus.slice(1)
+            },
+            documents: {
+              aadhar_front: user.aadhar_front || null,
+              aadhar_back: user.aadhar_back || null,
+              pan: user.pan || null
+            },
+            kyc_note: user.kyc_note || null,
+            created_at: user.created_at,
+            updated_at: user.updated_at
+          }))
+        });
+      });
+    });
+
+  } catch (error) {
+    console.error('Error fetching KYC records:', error);
+    res.status(500).json({
+      success: false,
+      message: "Internal server error",
+      error: error.message
+    });
+  }
+});
+
+//================= Get user betting statistics ==========
+router.get('/user-bet-stats/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    let { page = 1, limit = 50 } = req.query;
+
+    if (!userId || isNaN(userId)) {
+      return res.status(400).json({ success: false, message: "Invalid user ID" });
+    }
+
+    page = parseInt(page);
+    limit = parseInt(limit);
+    const offset = (page - 1) * limit;
+
+    // Main game stats query
+    const statsQuery = `
+      SELECT 
+        COUNT(*) as total_bets,
+        SUM(amount) as total_bet_amount,
+        SUM(CASE 
+            WHEN (bet_type = 'number' AND CAST(bet_value AS SIGNED) = r.result_number) OR
+                 (bet_type = 'color' AND bet_value = r.result_color) OR
+                 (bet_type = 'size' AND bet_value = r.result_size)
+            THEN amount * 1.9
+            ELSE 0  
+        END) as total_winnings,
+        COUNT(CASE 
+            WHEN (bet_type = 'number' AND CAST(bet_value AS SIGNED) = r.result_number) OR
+                 (bet_type = 'color' AND bet_value = r.result_color) OR
+                 (bet_type = 'size' AND bet_value = r.result_size)
+            THEN 1 
+        END) as total_wins,
+        SUM(CASE WHEN bet_type = 'color' THEN amount ELSE 0 END) as color_bets_amount,
+        SUM(CASE WHEN bet_type = 'number' THEN amount ELSE 0 END) as number_bets_amount,
+        SUM(CASE WHEN bet_type = 'size' THEN amount ELSE 0 END) as size_bets_amount
+      FROM bets b
+      LEFT JOIN result r ON b.period_number = r.period_number
+      WHERE b.user_id = ? AND b.status = 'processed'
+      GROUP BY b.user_id
+    `;
+
+    // Paginated recent bets query
+    const recentBetsQuery = `
+      SELECT 
+        b.period_number,
+        b.bet_type,
+        b.bet_value,
+        b.amount,
+        b.placed_at,
+        CASE 
+            WHEN (bet_type = 'number' AND CAST(bet_value AS SIGNED) = r.result_number) OR
+                 (bet_type = 'color' AND bet_value = r.result_color) OR
+                 (bet_type = 'size' AND bet_value = r.result_size)
+            THEN amount * 1.9
+            ELSE 0 
+        END as winnings,
+        CASE 
+            WHEN (bet_type = 'number' AND CAST(bet_value AS SIGNED) = r.result_number) OR
+                 (bet_type = 'color' AND bet_value = r.result_color) OR
+                 (bet_type = 'size' AND bet_value = r.result_size)
+            THEN 'won'
+            ELSE 'lost'
+        END as result
+      FROM bets b
+      LEFT JOIN result r ON b.period_number = r.period_number
+      WHERE b.user_id = ? AND b.status = 'processed'
+      ORDER BY b.placed_at DESC
+      LIMIT ? OFFSET ?
+    `;
+
+    // Count total for pagination
+    const totalRecentBetsQuery = `
+      SELECT COUNT(*) AS total FROM bets
+      WHERE user_id = ? AND status = 'processed'
+    `;
+
+    // Turnover stats
+    const turnoverStatsQuery = `
+      SELECT 
+        COUNT(*) AS total_turnover_bets,
+        SUM(bet) AS total_turnover_amount,
+        SUM(CASE WHEN win > 0 THEN 1 ELSE 0 END) AS total_turnover_wins,
+        SUM(win) AS total_turnover_win_amount,
+        SUM(win - bet) AS turnover_profit_loss
+      FROM api_turnover
+      WHERE login = ?
+    `;
+
+    // Game-wise breakdown
+    const turnoverGameDistQuery = `
+      SELECT 
+        gameId,
+        COUNT(*) AS total_bets,
+        SUM(bet) AS total_bet_amount,
+        SUM(win) AS total_win_amount
+      FROM api_turnover
+      WHERE login = ?
+      GROUP BY gameId
+    `;
+
+    // Execute queries
+    const [stats, recentBets, totalRecentCount, turnoverStats, gameDistribution] = await Promise.all([
+      new Promise((resolve, reject) => {
+        connection.query(statsQuery, [userId], (err, results) => {
+          if (err) reject(err); else resolve(results[0]);
+        });
+      }),
+      new Promise((resolve, reject) => {
+        connection.query(recentBetsQuery, [userId, limit, offset], (err, results) => {
+          if (err) reject(err); else resolve(results);
+        });
+      }),
+      new Promise((resolve, reject) => {
+        connection.query(totalRecentBetsQuery, [userId], (err, results) => {
+          if (err) reject(err); else resolve(results[0]?.total || 0);
+        });
+      }),
+      new Promise((resolve, reject) => {
+        connection.query(turnoverStatsQuery, [userId], (err, results) => {
+          if (err) reject(err); else resolve(results[0]);
+        });
+      }),
+      new Promise((resolve, reject) => {
+        connection.query(turnoverGameDistQuery, [userId], (err, results) => {
+          if (err) reject(err); else resolve(results);
+        });
+      })
+    ]);
+
+    const profitLoss = parseFloat(stats?.total_winnings || 0) - parseFloat(stats?.total_bet_amount || 0);
+    const totalPages = Math.ceil(totalRecentCount / limit);
+
+    res.json({
+      success: true,
+      statistics: {
+        total_bets: parseInt(stats?.total_bets || 0),
+        total_bet_amount: parseFloat(stats?.total_bet_amount || 0),
+        total_winnings: parseFloat(stats?.total_winnings || 0),
+        total_wins: parseInt(stats?.total_wins || 0),
+        win_rate: stats?.total_bets ? ((stats.total_wins / stats.total_bets) * 100).toFixed(2) : "0.00",
+        profit_loss: profitLoss,
+        bet_distribution: {
+          color: parseFloat(stats?.color_bets_amount || 0),
+          number: parseFloat(stats?.number_bets_amount || 0),
+          size: parseFloat(stats?.size_bets_amount || 0)
+        }
+      },
+      recent_bets: {
+        page,
+        limit,
+        total: totalRecentCount,
+        totalPages,
+        data: recentBets.map(bet => ({
+          period_number: bet.period_number,
+          bet_type: bet.bet_type,
+          bet_value: bet.bet_value,
+          amount: parseFloat(bet.amount),
+          winnings: parseFloat(bet.winnings),
+          result: bet.result,
+          placed_at: bet.placed_at
+        }))
+      },
+      other_game_stats: {
+        total_turnover_bets: parseInt(turnoverStats?.total_turnover_bets || 0),
+        total_turnover_amount: parseFloat(turnoverStats?.total_turnover_amount || 0),
+        total_turnover_wins: parseInt(turnoverStats?.total_turnover_wins || 0),
+        total_turnover_win_amount: parseFloat(turnoverStats?.total_turnover_win_amount || 0),
+        turnover_profit_loss: parseFloat(turnoverStats?.turnover_profit_loss || 0),
+        game_distribution: gameDistribution.map(row => ({
+          gameId: row.gameId,
+          total_bets: parseInt(row.total_bets),
+          total_bet_amount: parseFloat(row.total_bet_amount),
+          total_win_amount: parseFloat(row.total_win_amount)
+        }))
+      }
+    });
+
+  } catch (error) {
+    console.error('Error fetching user betting statistics:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching betting statistics',
+      error: error.message
+    });
+  }
+});
+
+
+//============== Get user's transaction history=============
+router.get('/transactions/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    // First check if user exists
+    const userQuery = "SELECT id, username FROM users WHERE id = ?";
+    const [user] = await new Promise((resolve, reject) => {
+      connection.query(userQuery, [userId], (err, results) => {
+        if (err) reject(err);
+        resolve(results);
+      });
+    });
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found"
+      });
+    }
+
+    // Get recharge history
+    const rechargeQuery = `
+            SELECT 
+                'recharge' as transaction_type,
+                recharge_id as id,
+                order_id,
+                recharge_amount as amount,
+                recharge_type as type,
+                payment_mode,
+                recharge_status as status,
+                CONCAT(date, ' ', time) as transaction_date
+            FROM recharge 
+            WHERE userId = ?`;
+
+    // Get withdrawal history
+    const withdrawalQuery = `
+            SELECT 
+                'withdrawal' as transaction_type,
+                id,
+                balance as amount,
+                cryptoname as type,
+                reject_note as   note,
+                CASE 
+                    WHEN status = 0 THEN 'pending'
+                    WHEN status = 1 THEN 'approved'
+                    WHEN status = 2 THEN 'rejected'
+                END as status,
+                NULL as order_id,
+                NULL as payment_mode,
+                DATE_FORMAT(NOW(), '%Y-%m-%d %H:%i:%s') as transaction_date
+            FROM withdrawl 
+            WHERE userId = ?`;
+
+    // Execute both queries
+    const [recharges, withdrawals] = await Promise.all([
+      new Promise((resolve, reject) => {
+        connection.query(rechargeQuery, [userId], (err, results) => {
+          if (err) reject(err);
+          resolve(results);
+        });
+      }),
+      new Promise((resolve, reject) => {
+        connection.query(withdrawalQuery, [userId], (err, results) => {
+          if (err) reject(err);
+          resolve(results);
+        });
+      })
+    ]);
+
+    // Combine and sort all transactions by date
+    const allTransactions = [...recharges, ...withdrawals]
+      .sort((a, b) => new Date(b.transaction_date) - new Date(a.transaction_date));
+
+    res.json({
+      success: true,
+      user: {
+        id: user.id,
+        username: user.username
+      },
+      transactions: allTransactions.map(transaction => ({
+        ...transaction,
+        transaction_date: new Date(transaction.transaction_date).toLocaleString()
+      }))
+    });
+
+  } catch (error) {
+    console.error('Error fetching transaction history:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching transaction history',
+      error: error.message
+    });
+  }
+});
 
 //--------------------------------------- Protected Routes----------------------
 
@@ -1093,40 +2151,6 @@ router.get("/referrals/:userId", async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 });
-
-// Get all users
-router.get('/allusers', async (req, res) => {
-  try {
-    const query = `
-      SELECT 
-        u.*, 
-        COALESCE(
-          CONCAT('[', 
-            GROUP_CONCAT(
-              JSON_OBJECT('cryptoname', w.cryptoname, 'balance', w.balance)
-            ), 
-          ']'), 
-          '[]'
-        ) AS wallets
-      FROM users u
-      LEFT JOIN wallet w ON u.id = w.userId
-      GROUP BY u.id
-    `;
-
-    connection.query(query, (err, results) => {
-      if (err) return res.status(500).json({ error: 'Database query error' });
-
-      results.forEach(user => {
-        user.wallets = JSON.parse(user.wallets);
-      });
-
-      res.json(results);
-    });
-  } catch (error) {
-    res.status(500).json({ error: 'Error fetching users' });
-  }
-});
-
 
 
 //Get one user by id
@@ -1786,212 +2810,6 @@ router.get('/pending-commissions/:userId', async (req, res) => {
 });
 
 
-
-//============== Get  user related all data by userId =================
-
-// router.get('/user-all-data/:userId', async (req, res) => {
-//   const userId = req.params.userId;
-
-//   try {
-//     // Get user basic information
-//     const userQuery = "SELECT * FROM users WHERE id = ?";
-//     const [userDetails] = await new Promise((resolve, reject) => {
-//       connection.query(userQuery, [userId], (err, results) => {
-//         if (err) reject(err);
-//         resolve(results);
-//       });
-//     });
-
-//     if (!userDetails) {
-//       return res.status(404).json({ error: 'User not found' });
-//     }
-
-//     // Get wallet information
-//     const walletQuery = "SELECT * FROM wallet WHERE userId = ?";
-//     const walletDetails = await new Promise((resolve, reject) => {
-//       connection.query(walletQuery, [userId], (err, results) => {
-//         if (err) reject(err);
-//         resolve(results);
-//       });
-//     });
-
-//     // Get bank account information
-//     const bankQuery = "SELECT * FROM bankaccount WHERE userId = ?";
-//     const bankDetails = await new Promise((resolve, reject) => {
-//       connection.query(bankQuery, [userId], (err, results) => {
-//         if (err) reject(err);
-//         resolve(results);
-//       });
-//     });
-
-//     // Get referral information
-//     const referralQuery = `
-//             SELECT r.*, u.username as referred_username 
-//             FROM referrals r 
-//             JOIN users u ON r.referred_id = u.id 
-//             WHERE r.referrer_id = ?`;
-//     const referralDetails = await new Promise((resolve, reject) => {
-//       connection.query(referralQuery, [userId], (err, results) => {
-//         if (err) reject(err);
-//         resolve(results);
-//       });
-//     });
-
-
-//     // Get withdrawal information
-//     const withdrawalQuery = "SELECT * FROM withdrawl WHERE userId = ?";
-//     const withdrawalDetails = await new Promise((resolve, reject) => {
-//       connection.query(withdrawalQuery, [userId], (err, results) => {
-//         if (err) reject(err);
-//         resolve(results);
-//       });
-//     });
-
-
-
-//     // Combine all data
-//     const userData = {
-//       user: {
-//         ...userDetails,
-//         password: undefined // Remove sensitive data
-//       },
-//       wallet: walletDetails,
-//       bankAccounts: bankDetails,
-//       referrals: referralDetails,
-//       withdrawals: withdrawalDetails,
-//       kyc: {
-//         status: userDetails.kycstatus,
-//         aadhar: userDetails.aadhar,
-//         pan: userDetails.pan
-//       }
-//     };
-
-//     res.json({
-//       success: true,
-//       message: 'User data retrieved successfully',
-//       data: userData
-//     });
-
-//   } catch (error) {
-//     console.error('Error fetching user data:', error);
-//     res.status(500).json({
-//       success: false,
-//       message: 'Error fetching user data',
-//       error: error.message
-//     });
-//   }
-// });
-
-router.get('/user-all-data/:userId', async (req, res) => {
-  const userId = req.params.userId;
-
-  try {
-    //  Get user basic info
-    const userResults = await new Promise((resolve, reject) => {
-      connection.query("SELECT * FROM users WHERE id = ?", [userId], (err, results) => {
-        if (err) return reject(err);
-        resolve(results);
-      });
-    });
-
-    if (!userResults || userResults.length === 0) {
-      return res.status(404).json({ success: false, error: 'User not found' });
-    }
-
-    const user = userResults[0];
-
-    //  Get wallet info
-    const walletDetails = await new Promise((resolve, reject) => {
-      connection.query("SELECT * FROM wallet WHERE userId = ?", [userId], (err, results) => {
-        if (err) return reject(err);
-        resolve(results);
-      });
-    });
-
-    //  Get bank accounts
-    const bankDetails = await new Promise((resolve, reject) => {
-      connection.query("SELECT * FROM bankaccount WHERE userId = ?", [userId], (err, results) => {
-        if (err) return reject(err);
-        resolve(results);
-      });
-    });
-
-    //  Get referral info
-    const referralDetails = await new Promise((resolve, reject) => {
-      const query = `
-        SELECT r.*, u.username as referred_username 
-        FROM referrals r 
-        JOIN users u ON r.referred_id = u.id 
-        WHERE r.referrer_id = ?
-      `;
-      connection.query(query, [userId], (err, results) => {
-        if (err) return reject(err);
-        resolve(results);
-      });
-    });
-
-    //  Get withdrawals
-    const withdrawalDetails = await new Promise((resolve, reject) => {
-      connection.query("SELECT * FROM withdrawl WHERE userId = ?", [userId], (err, results) => {
-        if (err) return reject(err);
-        resolve(results);
-      });
-    });
-
-    //  Get KYC details from user_kyc_requests table
-    const kycResults = await new Promise((resolve, reject) => {
-      connection.query(
-        "SELECT aadhar_front, aadhar_back, pan, status, kyc_note FROM user_kyc_requests WHERE user_id = ?",
-        [userId],
-        (err, results) => {
-          if (err) return reject(err);
-          resolve(results);
-        }
-      );
-    });
-
-    const kycDetails = kycResults.length > 0 ? kycResults[0] : {
-      status: "not_requested",
-      aadhar_front: null,
-      aadhar_back: null,
-      pan: null,
-      kyc_note: null
-    };
-
-    //  Final Combined Data
-    const userData = {
-      user: {
-        ...user,
-        password: undefined // remove sensitive field
-      },
-      wallet: walletDetails,
-      bankAccounts: bankDetails,
-      referrals: referralDetails,
-      withdrawals: withdrawalDetails,
-      kyc: kycDetails
-    };
-
-    //  Send response
-    res.json({
-      success: true,
-      message: 'User data retrieved successfully',
-      data: userData
-    });
-
-  } catch (error) {
-    console.error('Error fetching user data:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error fetching user data',
-      error: error.message
-    });
-  }
-});
-
-
-
-
-
 //==================== how many coupons a user have redeem ======== 
 // Get user's coupon redemption history
 router.get('/coupons/:userId/', async (req, res) => {
@@ -2066,288 +2884,7 @@ router.get('/coupons/:userId/', async (req, res) => {
   }
 });
 
-//============== Get user's transaction history=============
-router.get('/transactions/:userId', async (req, res) => {
-  try {
-    const { userId } = req.params;
 
-    // First check if user exists
-    const userQuery = "SELECT id, username FROM users WHERE id = ?";
-    const [user] = await new Promise((resolve, reject) => {
-      connection.query(userQuery, [userId], (err, results) => {
-        if (err) reject(err);
-        resolve(results);
-      });
-    });
-
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: "User not found"
-      });
-    }
-
-    // Get recharge history
-    const rechargeQuery = `
-            SELECT 
-                'recharge' as transaction_type,
-                recharge_id as id,
-                order_id,
-                recharge_amount as amount,
-                recharge_type as type,
-                payment_mode,
-                recharge_status as status,
-                CONCAT(date, ' ', time) as transaction_date
-            FROM recharge 
-            WHERE userId = ?`;
-
-    // Get withdrawal history
-    const withdrawalQuery = `
-            SELECT 
-                'withdrawal' as transaction_type,
-                id,
-                balance as amount,
-                cryptoname as type,
-                reject_note as   note,
-                CASE 
-                    WHEN status = 0 THEN 'pending'
-                    WHEN status = 1 THEN 'approved'
-                    WHEN status = 2 THEN 'rejected'
-                END as status,
-                NULL as order_id,
-                NULL as payment_mode,
-                DATE_FORMAT(NOW(), '%Y-%m-%d %H:%i:%s') as transaction_date
-            FROM withdrawl 
-            WHERE userId = ?`;
-
-    // Execute both queries
-    const [recharges, withdrawals] = await Promise.all([
-      new Promise((resolve, reject) => {
-        connection.query(rechargeQuery, [userId], (err, results) => {
-          if (err) reject(err);
-          resolve(results);
-        });
-      }),
-      new Promise((resolve, reject) => {
-        connection.query(withdrawalQuery, [userId], (err, results) => {
-          if (err) reject(err);
-          resolve(results);
-        });
-      })
-    ]);
-
-    // Combine and sort all transactions by date
-    const allTransactions = [...recharges, ...withdrawals]
-      .sort((a, b) => new Date(b.transaction_date) - new Date(a.transaction_date));
-
-    res.json({
-      success: true,
-      user: {
-        id: user.id,
-        username: user.username
-      },
-      transactions: allTransactions.map(transaction => ({
-        ...transaction,
-        transaction_date: new Date(transaction.transaction_date).toLocaleString()
-      }))
-    });
-
-  } catch (error) {
-    console.error('Error fetching transaction history:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error fetching transaction history',
-      error: error.message
-    });
-  }
-});
-
-//================= Get user betting statistics ==========
-router.get('/user-bet-stats/:userId', async (req, res) => {
-  try {
-    const { userId } = req.params;
-    let { page = 1, limit = 50 } = req.query;
-
-    if (!userId || isNaN(userId)) {
-      return res.status(400).json({ success: false, message: "Invalid user ID" });
-    }
-
-    page = parseInt(page);
-    limit = parseInt(limit);
-    const offset = (page - 1) * limit;
-
-    // Main game stats query
-    const statsQuery = `
-      SELECT 
-        COUNT(*) as total_bets,
-        SUM(amount) as total_bet_amount,
-        SUM(CASE 
-            WHEN (bet_type = 'number' AND CAST(bet_value AS SIGNED) = r.result_number) OR
-                 (bet_type = 'color' AND bet_value = r.result_color) OR
-                 (bet_type = 'size' AND bet_value = r.result_size)
-            THEN amount * 1.9
-            ELSE 0  
-        END) as total_winnings,
-        COUNT(CASE 
-            WHEN (bet_type = 'number' AND CAST(bet_value AS SIGNED) = r.result_number) OR
-                 (bet_type = 'color' AND bet_value = r.result_color) OR
-                 (bet_type = 'size' AND bet_value = r.result_size)
-            THEN 1 
-        END) as total_wins,
-        SUM(CASE WHEN bet_type = 'color' THEN amount ELSE 0 END) as color_bets_amount,
-        SUM(CASE WHEN bet_type = 'number' THEN amount ELSE 0 END) as number_bets_amount,
-        SUM(CASE WHEN bet_type = 'size' THEN amount ELSE 0 END) as size_bets_amount
-      FROM bets b
-      LEFT JOIN result r ON b.period_number = r.period_number
-      WHERE b.user_id = ? AND b.status = 'processed'
-      GROUP BY b.user_id
-    `;
-
-    // Paginated recent bets query
-    const recentBetsQuery = `
-      SELECT 
-        b.period_number,
-        b.bet_type,
-        b.bet_value,
-        b.amount,
-        b.placed_at,
-        CASE 
-            WHEN (bet_type = 'number' AND CAST(bet_value AS SIGNED) = r.result_number) OR
-                 (bet_type = 'color' AND bet_value = r.result_color) OR
-                 (bet_type = 'size' AND bet_value = r.result_size)
-            THEN amount * 1.9
-            ELSE 0 
-        END as winnings,
-        CASE 
-            WHEN (bet_type = 'number' AND CAST(bet_value AS SIGNED) = r.result_number) OR
-                 (bet_type = 'color' AND bet_value = r.result_color) OR
-                 (bet_type = 'size' AND bet_value = r.result_size)
-            THEN 'won'
-            ELSE 'lost'
-        END as result
-      FROM bets b
-      LEFT JOIN result r ON b.period_number = r.period_number
-      WHERE b.user_id = ? AND b.status = 'processed'
-      ORDER BY b.placed_at DESC
-      LIMIT ? OFFSET ?
-    `;
-
-    // Count total for pagination
-    const totalRecentBetsQuery = `
-      SELECT COUNT(*) AS total FROM bets
-      WHERE user_id = ? AND status = 'processed'
-    `;
-
-    // Turnover stats
-    const turnoverStatsQuery = `
-      SELECT 
-        COUNT(*) AS total_turnover_bets,
-        SUM(bet) AS total_turnover_amount,
-        SUM(CASE WHEN win > 0 THEN 1 ELSE 0 END) AS total_turnover_wins,
-        SUM(win) AS total_turnover_win_amount,
-        SUM(win - bet) AS turnover_profit_loss
-      FROM api_turnover
-      WHERE login = ?
-    `;
-
-    // Game-wise breakdown
-    const turnoverGameDistQuery = `
-      SELECT 
-        gameId,
-        COUNT(*) AS total_bets,
-        SUM(bet) AS total_bet_amount,
-        SUM(win) AS total_win_amount
-      FROM api_turnover
-      WHERE login = ?
-      GROUP BY gameId
-    `;
-
-    // Execute queries
-    const [stats, recentBets, totalRecentCount, turnoverStats, gameDistribution] = await Promise.all([
-      new Promise((resolve, reject) => {
-        connection.query(statsQuery, [userId], (err, results) => {
-          if (err) reject(err); else resolve(results[0]);
-        });
-      }),
-      new Promise((resolve, reject) => {
-        connection.query(recentBetsQuery, [userId, limit, offset], (err, results) => {
-          if (err) reject(err); else resolve(results);
-        });
-      }),
-      new Promise((resolve, reject) => {
-        connection.query(totalRecentBetsQuery, [userId], (err, results) => {
-          if (err) reject(err); else resolve(results[0]?.total || 0);
-        });
-      }),
-      new Promise((resolve, reject) => {
-        connection.query(turnoverStatsQuery, [userId], (err, results) => {
-          if (err) reject(err); else resolve(results[0]);
-        });
-      }),
-      new Promise((resolve, reject) => {
-        connection.query(turnoverGameDistQuery, [userId], (err, results) => {
-          if (err) reject(err); else resolve(results);
-        });
-      })
-    ]);
-
-    const profitLoss = parseFloat(stats?.total_winnings || 0) - parseFloat(stats?.total_bet_amount || 0);
-    const totalPages = Math.ceil(totalRecentCount / limit);
-
-    res.json({
-      success: true,
-      statistics: {
-        total_bets: parseInt(stats?.total_bets || 0),
-        total_bet_amount: parseFloat(stats?.total_bet_amount || 0),
-        total_winnings: parseFloat(stats?.total_winnings || 0),
-        total_wins: parseInt(stats?.total_wins || 0),
-        win_rate: stats?.total_bets ? ((stats.total_wins / stats.total_bets) * 100).toFixed(2) : "0.00",
-        profit_loss: profitLoss,
-        bet_distribution: {
-          color: parseFloat(stats?.color_bets_amount || 0),
-          number: parseFloat(stats?.number_bets_amount || 0),
-          size: parseFloat(stats?.size_bets_amount || 0)
-        }
-      },
-      recent_bets: {
-        page,
-        limit,
-        total: totalRecentCount,
-        totalPages,
-        data: recentBets.map(bet => ({
-          period_number: bet.period_number,
-          bet_type: bet.bet_type,
-          bet_value: bet.bet_value,
-          amount: parseFloat(bet.amount),
-          winnings: parseFloat(bet.winnings),
-          result: bet.result,
-          placed_at: bet.placed_at
-        }))
-      },
-      other_game_stats: {
-        total_turnover_bets: parseInt(turnoverStats?.total_turnover_bets || 0),
-        total_turnover_amount: parseFloat(turnoverStats?.total_turnover_amount || 0),
-        total_turnover_wins: parseInt(turnoverStats?.total_turnover_wins || 0),
-        total_turnover_win_amount: parseFloat(turnoverStats?.total_turnover_win_amount || 0),
-        turnover_profit_loss: parseFloat(turnoverStats?.turnover_profit_loss || 0),
-        game_distribution: gameDistribution.map(row => ({
-          gameId: row.gameId,
-          total_bets: parseInt(row.total_bets),
-          total_bet_amount: parseFloat(row.total_bet_amount),
-          total_win_amount: parseFloat(row.total_win_amount)
-        }))
-      }
-    });
-
-  } catch (error) {
-    console.error('Error fetching user betting statistics:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error fetching betting statistics',
-      error: error.message
-    });
-  }
-});
 
 //================ Get KYC Details by ID =================
 // router.get('/kyc-details/:userId', async (req, res) => {
@@ -2516,546 +3053,11 @@ router.get('/kyc-details/:userId', async (req, res) => {
 });
 
 
-//================ KYC Approval by Admin =================
-
-// router.put('/kyc/approve/:userId', async (req, res) => {
-//   try {
-//     const userId = req.params.userId;
-//     const { status, note } = req.body; // note is optional, but useful on rejection
-
-
-//     if (![0, 1, 2].includes(Number(status))) {
-//       return res.status(400).json({
-//         success: false,
-//         message: "Invalid status value. Use 0 for pending, 1 for approved, 2 for rejected"
-//       });
-//     }
-
-//     // First check if user has uploaded KYC documents
-//     const checkQuery = `
-//       SELECT aadhar_front, aadhar_back, pan, kycstatus 
-//       FROM users 
-//       WHERE id = ?
-//     `;
-
-//     const checkUser = () => {
-//       return new Promise((resolve, reject) => {
-//         connection.query(checkQuery, [userId], (err, results) => {
-//           if (err) {
-//             console.error('Database error in checkQuery:', err);
-//             reject(err);
-//             return;
-//           }
-//           resolve(results);
-//         });
-//       });
-//     };
-
-//     const results = await checkUser();
-
-//     if (!results || results.length === 0) {
-//       return res.status(404).json({
-//         success: false,
-//         message: "User not found"
-//       });
-//     }
-
-//     const user = results[0];
-
-//     if (!user.aadhar_front && !user.pan) {
-//       return res.status(400).json({
-//         success: false,
-//         message: "Cannot process KYC. No documents uploaded",
-//         missing_documents: {
-//           aadhar_front: !user.aadhar_front,
-//           aadhar_back: !user.aadhar_back,
-//           pan: !user.pan
-//         }
-//       });
-//     }
-
-//     // Update status + note
-//     const updateQuery = `
-//       UPDATE users 
-//       SET kycstatus = ?, kyc_note = ?
-//       WHERE id = ?
-//     `;
-
-//     const updateStatus = () => {
-//       return new Promise((resolve, reject) => {
-//         connection.query(updateQuery, [status, note || null, userId], (err, result) => {
-//           if (err) {
-//             console.error('Database error in updateQuery:', err);
-//             reject(err);
-//             return;
-//           }
-//           resolve(result);
-//         });
-//       });
-//     };
-
-//     await updateStatus();
-
-//     res.json({
-//       success: true,
-//       message: `KYC ${status === 1 ? 'approved' : status === 2 ? 'rejected' : 'set to pending'} successfully`,
-//       data: {
-//         user_id: userId,
-//         new_status: status,
-//         status_text: status === 1 ? 'Approved' : status === 2 ? 'Rejected' : 'Pending',
-//         documents: {
-//           aadhar: user.aadhar_front ? "Submitted" : "Not submitted",
-//           pan: user.pan ? "Submitted" : "Not submitted"
-//         },
-//         note: note || null
-//       }
-//     });
-
-//   } catch (error) {
-//     console.error('Error processing KYC:', error);
-//     res.status(500).json({
-//       success: false,
-//       message: "Internal server error",
-//       error: error.message
-//     });
-//   }
-// });
-router.put('/kyc/approve/:userId', async (req, res) => {
-  try {
-    const userId = req.params.userId;
-    const { status, note } = req.body;
-
-    // Allowed status values: pending, approved, rejected
-    const validStatuses = ['pending', 'approved', 'rejected'];
-    if (!validStatuses.includes(status)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid status. Use 'pending', 'approved', or 'rejected'."
-      });
-    }
-
-    // Step 1: Check if KYC request exists for this user
-    const checkQuery = `
-      SELECT * FROM user_kyc_requests
-      WHERE user_id = ?
-    `;
-
-    const [kycRequests] = await new Promise((resolve, reject) => {
-      connection.query(checkQuery, [userId], (err, results) => {
-        if (err) return reject(err);
-        resolve(results);
-      });
-    });
-
-    if (!kycRequests) {
-      return res.status(404).json({
-        success: false,
-        message: "No KYC request found for this user."
-      });
-    }
-
-    const user = kycRequests;
-
-    if (!user.aadhar_front && !user.pan) {
-      return res.status(400).json({
-        success: false,
-        message: "Cannot process KYC. No documents uploaded.",
-        missing_documents: {
-          aadhar_front: !user.aadhar_front,
-          aadhar_back: !user.aadhar_back,
-          pan: !user.pan
-        }
-      });
-    }
-
-    // Step 2: Update status and note
-    const updateQuery = `
-      UPDATE user_kyc_requests
-      SET status = ?, kyc_note = ?
-      WHERE user_id = ?
-    `;
-
-    await new Promise((resolve, reject) => {
-      connection.query(updateQuery, [status, note || null, userId], (err, result) => {
-        if (err) return reject(err);
-        resolve(result);
-      });
-    });
-
-    res.json({
-      success: true,
-      message: `KYC ${status} successfully`,
-      data: {
-        user_id: userId,
-        new_status: status,
-        documents: {
-          aadhar_front: user.aadhar_front ? "Submitted" : "Not submitted",
-          aadhar_back: user.aadhar_back ? "Submitted" : "Not submitted",
-          pan: user.pan ? "Submitted" : "Not submitted"
-        },
-        note: note || null
-      }
-    });
-
-  } catch (error) {
-    console.error('Error processing KYC:', error);
-    res.status(500).json({
-      success: false,
-      message: "Internal server error",
-      error: error.message
-    });
-  }
-});
 
 
 
-//================ Get All Users with Pending KYC =================
-
-// router.get('/pending-kyc', async (req, res) => {
-//   try {
-//     const page = parseInt(req.query.page) || 1;
-//     const status = parseInt(req.query.status); // Get status from query params
-//     const limit = 20;
-//     const offset = (page - 1) * limit;
-
-//     // Validate status parameter
-//     if (![0, 1, 2, 3].includes(status)) {
-//       return res.status(400).json({
-//         success: false,
-//         message: "Invalid status value. Use 0 for pending, 1 for approved, 2 for rejected, 3 for all"
-//       });
-//     }
-
-//     // Build WHERE clause based on status
-//     const whereClause = status === 3 ? '' : 'WHERE kycstatus = ?';
-
-//     // Query to get total users based on status
-//     const countQuery = `
-//       SELECT COUNT(*) as total 
-//       FROM users 
-//       ${whereClause}
-//     `;
-
-//     const countParams = status === 3 ? [] : [status];
-
-//     connection.query(countQuery, countParams, (countErr, countResult) => {
-//       if (countErr) {
-//         console.error('Count query error:', countErr);
-//         return res.status(500).json({
-//           success: false,
-//           message: "Error counting KYC users",
-//           error: countErr.message
-//         });
-//       }
-
-//       const totalUsers = countResult[0].total;
-//       const totalPages = Math.ceil(totalUsers / limit);
-
-//       // Now fetch paginated data with updated fields
-//       const dataQuery = `
-//         SELECT 
-//           id,
-//           username,
-//           name,
-//           email,
-//           phone,
-//           aadhar_front,
-//           aadhar_back,
-//           pan,
-//           kycstatus,
-//           my_referral_code
-//         FROM users 
-//         ${whereClause}
-//         ORDER BY id DESC
-//         LIMIT ? OFFSET ?
-//       `;
-
-//       const queryParams = status === 3
-//         ? [limit, offset]
-//         : [status, limit, offset];
-
-//       connection.query(dataQuery, queryParams, (err, results) => {
-//         if (err) {
-//           console.error('Data fetch error:', err);
-//           return res.status(500).json({
-//             success: false,
-//             message: "Error fetching KYC users",
-//             error: err.message
-//           });
-//         }
-
-//         const statusText = {
-//           0: 'Pending',
-//           1: 'Approved',
-//           2: 'Rejected',
-//           3: 'All'
-//         };
-
-//         res.json({
-//           success: true,
-//           message: `${statusText[status]} KYC users retrieved successfully`,
-//           total_items: totalUsers,
-//           total_pages: totalPages,
-//           current_page: page,
-//           items_per_page: limit,
-//           status: status,
-//           status_text: statusText[status],
-//           data: results.map(user => ({
-//             user_id: user.id,
-//             username: user.username,
-//             name: user.name,
-//             email: user.email,
-//             phone: user.phone,
-//             referral_code: user.my_referral_code,
-//             kyc_status: {
-//               code: user.kycstatus,
-//               text: statusText[user.kycstatus]
-//             },
-//             documents: {
-//               aadharfront: user.aadhar_front ? `${user.aadhar_front}` : null,
-//               aadharback: user.aadhar_back ? `${user.aadhar_back}` : null,
-//               pan: user.pan ? `${user.pan}` : null
-//             }
-//           }))
-//         });
-//       });
-//     });
-
-//   } catch (error) {
-//     console.error('Error fetching KYC users:', error);
-//     res.status(500).json({
-//       success: false,
-//       message: "Internal server error",
-//       error: error.message
-//     });
-//   }
-// });
-router.get('/pending-kyc', async (req, res) => {
-  try {
-    const page = parseInt(req.query.page) || 1;
-    const status = req.query.status || 'pending'; // Use ENUM value
-    const limit = 20;
-    const offset = (page - 1) * limit;
-
-    const validStatuses = ['pending', 'approved', 'rejected', 'all'];
-    if (!validStatuses.includes(status)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid status. Use 'pending', 'approved', 'rejected', or 'all'."
-      });
-    }
-
-    const whereClause = status === 'all' ? '' : 'WHERE k.status = ?';
-    const countQuery = `
-      SELECT COUNT(*) AS total
-      FROM user_kyc_requests k
-      ${whereClause}
-    `;
-    const countParams = status === 'all' ? [] : [status];
-
-    connection.query(countQuery, countParams, (countErr, countResult) => {
-      if (countErr) {
-        console.error('Count query error:', countErr);
-        return res.status(500).json({
-          success: false,
-          message: "Error counting KYC records",
-          error: countErr.message
-        });
-      }
-
-      const totalItems = countResult[0].total;
-      const totalPages = Math.ceil(totalItems / limit);
-
-      const dataQuery = `
-        SELECT 
-          k.id AS kyc_id,
-          u.id AS user_id,
-          u.username,
-          u.name,
-          u.email,
-          u.phone,
-          u.my_referral_code,
-          k.aadhar_front,
-          k.aadhar_back,
-          k.pan,
-          k.status AS kycstatus,
-          k.kyc_note,
-          k.created_at,
-          k.updated_at
-        FROM user_kyc_requests k
-        JOIN users u ON u.id = k.user_id
-        ${whereClause}
-        ORDER BY k.id DESC
-        LIMIT ? OFFSET ?
-      `;
-
-      const dataParams = status === 'all'
-        ? [limit, offset]
-        : [status, limit, offset];
-
-      connection.query(dataQuery, dataParams, (err, results) => {
-        if (err) {
-          console.error('Data fetch error:', err);
-          return res.status(500).json({
-            success: false,
-            message: "Error fetching KYC requests",
-            error: err.message
-          });
-        }
-
-        res.json({
-          success: true,
-          message: `KYC records for status '${status}' retrieved successfully`,
-          total_items: totalItems,
-          total_pages: totalPages,
-          current_page: page,
-          items_per_page: limit,
-          status,
-          data: results.map(user => ({
-            kyc_id: user.kyc_id,
-            user_id: user.user_id,
-            username: user.username,
-            name: user.name,
-            email: user.email,
-            phone: user.phone,
-            referral_code: user.my_referral_code,
-            kyc_status: {
-              code: user.kycstatus,
-              text: user.kycstatus.charAt(0).toUpperCase() + user.kycstatus.slice(1)
-            },
-            documents: {
-              aadhar_front: user.aadhar_front || null,
-              aadhar_back: user.aadhar_back || null,
-              pan: user.pan || null
-            },
-            kyc_note: user.kyc_note || null,
-            created_at: user.created_at,
-            updated_at: user.updated_at
-          }))
-        });
-      });
-    });
-
-  } catch (error) {
-    console.error('Error fetching KYC records:', error);
-    res.status(500).json({
-      success: false,
-      message: "Internal server error",
-      error: error.message
-    });
-  }
-});
 
 
-//================ Get User Game Transactions =================
-router.get('/game-transactions/:userId', async (req, res) => {
-  try {
-    const { userId } = req.params;
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 20;
-    const offset = (page - 1) * limit;
-
-    // Query to check if user exists
-    const userQuery = "SELECT id, username FROM users WHERE id = ?";
-    connection.query(userQuery, [userId], (userErr, userResult) => {
-      if (userErr) {
-        console.error('User query error:', userErr);
-        return res.status(500).json({
-          success: false,
-          message: "Error checking user",
-          error: userErr.message
-        });
-      }
-
-      const user = userResult[0];
-      if (!user) {
-        return res.status(404).json({
-          success: false,
-          message: "User not found"
-        });
-      }
-
-      // Query to get total transactions
-      const countQuery = `
-        SELECT COUNT(*) as total 
-        FROM api_turnover 
-        WHERE login = ?
-      `;
-
-      connection.query(countQuery, [userId], (countErr, countResult) => {
-        if (countErr) {
-          console.error('Count query error:', countErr);
-          return res.status(500).json({
-            success: false,
-            message: "Error counting transactions",
-            error: countErr.message
-          });
-        }
-
-        const totalRecords = countResult[0].total;
-        const totalPages = Math.ceil(totalRecords / limit);
-
-        // Query to get paginated transactions
-        const transactionQuery = `
-          SELECT 
-            id as transaction_id,
-            cmd as transaction_type,
-            sessionId,
-            bet as bet_amount,
-            date as bet_date,
-            gameId,
-            win as winning_amount,
-            created_at,
-            CASE
-              WHEN win IS NULL THEN 'pending'
-              WHEN win > 0 THEN 'won'
-              ELSE 'lost'
-            END as status
-          FROM api_turnover 
-          WHERE login = ?
-          ORDER BY created_at DESC
-          LIMIT ? OFFSET ?
-        `;
-
-        connection.query(transactionQuery, [userId, limit, offset], (txErr, txResult) => {
-          if (txErr) {
-            console.error('Transaction query error:', txErr);
-            return res.status(500).json({
-              success: false,
-              message: "Error fetching transactions",
-              error: txErr.message
-            });
-          }
-          // Format transaction amounts because they might be strings
-          const transactions = txResult.map(tx => ({
-            ...tx,
-            bet_amount: parseFloat(tx.bet_amount || 0),
-            winning_amount: parseFloat(tx.winning_amount || 0)
-          }));
-
-          res.json({
-            success: true,
-            message: "Game transactions retrieved successfully",
-            pagination: {
-              total_records: totalRecords,
-              total_pages: totalPages,
-              current_page: page,
-              limit: limit
-            },
-            transactions
-          });
-        });
-      });
-    });
-  } catch (error) {
-    console.error('Unexpected error:', error);
-    res.status(500).json({
-      success: false,
-      message: "Unexpected server error",
-      error: error.message
-    });
-  }
-});
 
 
 
