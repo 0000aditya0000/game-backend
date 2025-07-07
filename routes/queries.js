@@ -1,131 +1,15 @@
 const express = require('express');
 const router = express.Router();
 const connection = require('../config/db');
-
-// Helper function to generate unique query ID
-function generateQueryId() {
-    const timestamp = Date.now().toString();
-    const random = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
-    return `Q${timestamp.slice(-6)}${random}`;
-}
-
-// ======================= Submit a new query ==========
-router.post('/submit', async (req, res) => {
-    try {
-   const { user_id, name, email, phone, telegram_id, query_type, message } = req.body;
+const authenticateToken = require('../middleware/authenticateToken');
 
 
-        // Validate required fields
-        if (!user_id||!name || !email || !phone || !query_type || !message) {
-            return res.status(400).json({
-                success: false,
-                message: "All fields except Telegram ID are required"
-            });
-        }
 
-        // Validate query type
-        const validQueryTypes = ['general', 'account', 'payment', 'technical', 'other'];
-        if (!validQueryTypes.includes(query_type)) {
-            return res.status(400).json({
-                success: false,
-                message: "Invalid query type"
-            });
-        }
 
-        // Generate unique query ID
-        const queryId = generateQueryId();
 
-      const query = `
-    INSERT INTO user_queries 
-    (id, user_id, name, email, phone, telegram_id, query_type, message) 
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `;
 
-        connection.query(
-            query,
-            [queryId, user_id, name, email, phone, telegram_id, query_type, message],
-            (err, results) => {
-                if (err) {
-                    console.error('Error submitting query:', err);
-                    return res.status(500).json({
-                        success: false,
-                        message: "Error submitting query"
-                    });
-                }
 
-                res.json({
-                    success: true,
-                    message: "Query submitted successfully",
-                    data: {
-                        query_id: queryId,
-                        status: 'pending',
-                        submitted_at: new Date()
-                    }
-                });
-            }
-        );
-    } catch (error) {
-        console.error('Server error:', error);
-        res.status(500).json({
-            success: false,
-            message: "Internal server error"
-        });
-    }
-});
 
-//======================= Get query status and comments by ID =========
-router.get('/:queryId', async (req, res) => {
-    try {
-        const { queryId } = req.params;
-
-        const queryDetails = `
-            SELECT q.*, 
-                   GROUP_CONCAT(
-                       JSON_OBJECT(
-                           'id', c.id,
-                           'comment', c.comment,
-                           'admin_comment', c.admin_comment,
-                           'created_at', c.created_at
-                       )
-                   ) as comments
-            FROM user_queries q
-            LEFT JOIN query_comments c ON q.id = c.query_id
-            WHERE q.id = ?
-            GROUP BY q.id
-        `;
-
-        connection.query(queryDetails, [queryId], (err, results) => {
-            if (err) {
-                console.error('Database error:', err);
-                return res.status(500).json({
-                    success: false,
-                    message: "Error fetching query details"
-                });
-            }
-
-            if (results.length === 0) {
-                return res.status(404).json({
-                    success: false,
-                    message: "Query not found"
-                });
-            }
-
-            const query = results[0];
-            query.comments = query.comments ? JSON.parse(`[${query.comments}]`) : [];
-
-            res.json({
-                success: true,
-                data: query
-            });
-        });
-    } catch (error) {
-        console.error('Server error:', error);
-        res.status(500).json({
-            success: false,
-            message: "Internal server error"
-        });
-    }
-});
 
 //========= Admin: Get all queries with pagination and filters ============
 router.get('/admin/all', async (req, res) => {
@@ -365,7 +249,140 @@ router.put('/:queryId/status', async (req, res) => {
     }
 });
 
-// ============= Get all queries by user_id ===============
+
+
+//============================================================================
+// This will ensure that all below routes in this file require authentication
+              router.use(authenticateToken);
+//=============================================================================
+
+
+// Helper function to generate unique query ID
+function generateQueryId() {
+    const timestamp = Date.now().toString();
+    const random = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
+    return `Q${timestamp.slice(-6)}${random}`;
+}
+
+// ======================= Submit a new query ==========
+router.post('/submit', async (req, res) => {
+    try {
+   const { user_id, name, email, phone, telegram_id, query_type, message } = req.body;
+
+
+        // Validate required fields
+        if (!user_id||!name || !email || !phone || !query_type || !message) {
+            return res.status(400).json({
+                success: false,
+                message: "All fields except Telegram ID are required"
+            });
+        }
+
+        // Validate query type
+        const validQueryTypes = ['general', 'account', 'payment', 'technical', 'other'];
+        if (!validQueryTypes.includes(query_type)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid query type"
+            });
+        }
+
+        // Generate unique query ID
+        const queryId = generateQueryId();
+
+      const query = `
+    INSERT INTO user_queries 
+    (id, user_id, name, email, phone, telegram_id, query_type, message) 
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `;
+
+        connection.query(
+            query,
+            [queryId, user_id, name, email, phone, telegram_id, query_type, message],
+            (err, results) => {
+                if (err) {
+                    console.error('Error submitting query:', err);
+                    return res.status(500).json({
+                        success: false,
+                        message: "Error submitting query"
+                    });
+                }
+
+                res.json({
+                    success: true,
+                    message: "Query submitted successfully",
+                    data: {
+                        query_id: queryId,
+                        status: 'pending',
+                        submitted_at: new Date()
+                    }
+                });
+            }
+        );
+    } catch (error) {
+        console.error('Server error:', error);
+        res.status(500).json({
+            success: false,
+            message: "Internal server error"
+        });
+    }
+});
+
+//======================= Get query status and comments by ID =========
+router.get('/:queryId', async (req, res) => {
+    try {
+        const { queryId } = req.params;
+
+        const queryDetails = `
+            SELECT q.*, 
+                   GROUP_CONCAT(
+                       JSON_OBJECT(
+                           'id', c.id,
+                           'comment', c.comment,
+                           'admin_comment', c.admin_comment,
+                           'created_at', c.created_at
+                       )
+                   ) as comments
+            FROM user_queries q
+            LEFT JOIN query_comments c ON q.id = c.query_id
+            WHERE q.id = ?
+            GROUP BY q.id
+        `;
+
+        connection.query(queryDetails, [queryId], (err, results) => {
+            if (err) {
+                console.error('Database error:', err);
+                return res.status(500).json({
+                    success: false,
+                    message: "Error fetching query details"
+                });
+            }
+
+            if (results.length === 0) {
+                return res.status(404).json({
+                    success: false,
+                    message: "Query not found"
+                });
+            }
+
+            const query = results[0];
+            query.comments = query.comments ? JSON.parse(`[${query.comments}]`) : [];
+
+            res.json({
+                success: true,
+                data: query
+            });
+        });
+    } catch (error) {
+        console.error('Server error:', error);
+        res.status(500).json({
+            success: false,
+            message: "Internal server error"
+        });
+    }
+});
+
+// ============= Get all queries by user_id ==================
 router.get('/user/:userId', async (req, res) => {
     try {
         const { userId } = req.params;

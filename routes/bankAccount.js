@@ -1,73 +1,132 @@
 const express = require('express');
 const connection = require('../config/db');
-
+const authenticateToken = require('../middleware/authenticateToken');
 const router = express.Router();
 
-// Create a new bank account
-router.post('/addnew', async (req, res) => {
-  const { userId, type, accountname, accountnumber, ifsccode, branch, usdt, network } = req.body;
 
+// // Simple status update for bank account
+// router.put('/update-status/:id', async (req, res) => {
+//   try {
+//     const { id } = req.params;
+//     const { status } = req.body;
+
+//     if (status === undefined) {
+//       return res.status(400).json({
+//         success: false,
+//         message: 'Status is required'
+//       });
+//     }
+
+//     const updateQuery = "UPDATE bankaccount SET status = ? WHERE id = ?";
+    
+//     connection.query(updateQuery, [status, id], (err, results) => {
+//       if (err) {
+//         return res.status(500).json({
+//           success: false,
+//           message: 'Error updating status'
+//         });
+//       }
+
+//       if (results.affectedRows === 0) {
+//         return res.status(404).json({
+//           success: false,
+//           message: 'Bank account not found'
+//         });
+//       }
+
+//       res.json({
+//         success: true,
+//         message: Status updated successfully
+//       });
+//     });
+//   } catch (error) {
+//     res.status(500).json({
+//       success: false,
+//       message: 'Server error'
+//     });
+//   }
+// });  
+
+
+
+//============= modify Simple status update for bank account with note
+router.put('/update-status/:id', async (req, res) => {
   try {
-    // If type is USDT, check for duplicate USDT address
-    if (type !== 'bank') {
-      const checkDuplicateQuery = `
-        SELECT id FROM bankaccount 
-        WHERE userId = ? AND usdt = ? AND usdt IS NOT NULL
-      `;
-      
-      connection.query(checkDuplicateQuery, [userId, usdt], (err, results) => {
-        if (err) {
-          console.log(err);
-          return res.status(500).json({ error: 'Database error while checking USDT address' });
-        }
-        
-        if (results.length > 0) {
-          return res.status(400).json({ error: 'USDT address already exists for this user' });
-        }
-        
-        // Insert USDT account
-        insertAccount();
+    const { id } = req.params;
+    const { status, note } = req.body;
+
+    // Validate status
+    if (status === undefined) {
+      return res.status(400).json({
+        success: false,
+        message: 'Status is required'
       });
-    } else {
-      // Directly insert bank account
-      insertAccount();
     }
 
-    function insertAccount() {
-      let query;
-      let values;
+    // Require note for rejection (status 2)
+    if (status === 2 && !note) {
+      return res.status(400).json({
+        success: false,
+        message: 'Note is required when rejecting'
+      });
+    }
 
-      if (type === 'bank') {
-        // For bank accounts
-        query = `
-          INSERT INTO bankaccount (userId, accountname, accountnumber, ifsccode, branch, status) 
-          VALUES (?, ?, ?, ?, ?, ?)
-        `;
-        values = [userId, accountname, accountnumber, ifsccode, branch, 0];
-      } else {
-        // For USDT accounts
-        query = `
-          INSERT INTO bankaccount (userId, usdt, network, status) 
-          VALUES (?, ?, ?, ?)
-        `;
-        values = [userId, usdt, network, 0];
+    const updateQuery = `
+      UPDATE bankaccount 
+      SET status = ?, 
+          status_note = ?
+      
+      WHERE id = ?`;
+    
+    connection.query(updateQuery, [status, note || null, id], (err, results) => {
+      if (err) {
+        console.error('Database error:', err);
+        return res.status(500).json({
+          success: false,
+          message: 'Error updating status',
+          error: err.message
+        });
       }
 
-      connection.query(query, values, (err, results) => {
+      if (results.affectedRows === 0) {
+        return res.status(404).json({
+          success: false,
+          message: 'Bank account not found'
+        });
+      }
+
+      // Fetch updated record to return in response
+      const getUpdatedRecord = "SELECT id, status, status_note FROM bankaccount WHERE id = ?";
+      connection.query(getUpdatedRecord, [id], (err, record) => {
         if (err) {
-          console.log(err);
-          return res.status(500).json({ error: 'Database error while creating account' });
+          return res.status(500).json({
+            success: false,
+            message: 'Error fetching updated record'
+          });
         }
-        res.status(201).json({ 
-          message: `${type === 'bank' ? 'Bank account' : 'USDT address'} created successfully`, 
-          id: results.insertId 
+
+        res.json({
+          success: true,
+          message: `Status updated successfully`,
+          data: {
+            id: record[0].id,
+            status: record[0].status,
+            status_text: status === 1 ? 'Approved' : status === 2 ? 'Rejected' : 'Pending',
+            note: record[0].status_note,
+          }
         });
       });
-    }
+    });
   } catch (error) {
-    res.status(500).json({ error: 'Error creating account' });
+    console.error('Server error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error',
+      error: error.message
+    });
   }
 });
+
 
 // Retrieve all bank accounts with pagination and status filter
 // router.get('/getall', async (req, res) => {
@@ -337,6 +396,82 @@ router.get('/getall', async (req, res) => {
   }
 });
 
+
+
+//============================================================================
+// This will ensure that all below routes in this file require authentication
+              router.use(authenticateToken);
+//=============================================================================
+
+
+
+// Create a new bank account
+router.post('/addnew', async (req, res) => {
+  const { userId, type, accountname, accountnumber, ifsccode, branch, usdt, network } = req.body;
+
+  try {
+    // If type is USDT, check for duplicate USDT address
+    if (type !== 'bank') {
+      const checkDuplicateQuery = `
+        SELECT id FROM bankaccount 
+        WHERE userId = ? AND usdt = ? AND usdt IS NOT NULL
+      `;
+      
+      connection.query(checkDuplicateQuery, [userId, usdt], (err, results) => {
+        if (err) {
+          console.log(err);
+          return res.status(500).json({ error: 'Database error while checking USDT address' });
+        }
+        
+        if (results.length > 0) {
+          return res.status(400).json({ error: 'USDT address already exists for this user' });
+        }
+        
+        // Insert USDT account
+        insertAccount();
+      });
+    } else {
+      // Directly insert bank account
+      insertAccount();
+    }
+
+    function insertAccount() {
+      let query;
+      let values;
+
+      if (type === 'bank') {
+        // For bank accounts
+        query = `
+          INSERT INTO bankaccount (userId, accountname, accountnumber, ifsccode, branch, status) 
+          VALUES (?, ?, ?, ?, ?, ?)
+        `;
+        values = [userId, accountname, accountnumber, ifsccode, branch, 0];
+      } else {
+        // For USDT accounts
+        query = `
+          INSERT INTO bankaccount (userId, usdt, network, status) 
+          VALUES (?, ?, ?, ?)
+        `;
+        values = [userId, usdt, network, 0];
+      }
+
+      connection.query(query, values, (err, results) => {
+        if (err) {
+          console.log(err);
+          return res.status(500).json({ error: 'Database error while creating account' });
+        }
+        res.status(201).json({ 
+          message: `${type === 'bank' ? 'Bank account' : 'USDT address'} created successfully`, 
+          id: results.insertId 
+        });
+      });
+    }
+  } catch (error) {
+    res.status(500).json({ error: 'Error creating account' });
+  }
+});
+
+
 //Retrive one bank accounts by user id
 router.get('/getone/user/:id', async (req, res) => {
   const userId = req.params.id;
@@ -470,127 +605,5 @@ router.delete('/delete/:id', async (req, res) => {
 });
 
 
-// // Simple status update for bank account
-// router.put('/update-status/:id', async (req, res) => {
-//   try {
-//     const { id } = req.params;
-//     const { status } = req.body;
-
-//     if (status === undefined) {
-//       return res.status(400).json({
-//         success: false,
-//         message: 'Status is required'
-//       });
-//     }
-
-//     const updateQuery = "UPDATE bankaccount SET status = ? WHERE id = ?";
-    
-//     connection.query(updateQuery, [status, id], (err, results) => {
-//       if (err) {
-//         return res.status(500).json({
-//           success: false,
-//           message: 'Error updating status'
-//         });
-//       }
-
-//       if (results.affectedRows === 0) {
-//         return res.status(404).json({
-//           success: false,
-//           message: 'Bank account not found'
-//         });
-//       }
-
-//       res.json({
-//         success: true,
-//         message: Status updated successfully
-//       });
-//     });
-//   } catch (error) {
-//     res.status(500).json({
-//       success: false,
-//       message: 'Server error'
-//     });
-//   }
-// });  
-
-
-
-//============= modify Simple status update for bank account with note
-router.put('/update-status/:id', async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { status, note } = req.body;
-
-    // Validate status
-    if (status === undefined) {
-      return res.status(400).json({
-        success: false,
-        message: 'Status is required'
-      });
-    }
-
-    // Require note for rejection (status 2)
-    if (status === 2 && !note) {
-      return res.status(400).json({
-        success: false,
-        message: 'Note is required when rejecting'
-      });
-    }
-
-    const updateQuery = `
-      UPDATE bankaccount 
-      SET status = ?, 
-          status_note = ?
-      
-      WHERE id = ?`;
-    
-    connection.query(updateQuery, [status, note || null, id], (err, results) => {
-      if (err) {
-        console.error('Database error:', err);
-        return res.status(500).json({
-          success: false,
-          message: 'Error updating status',
-          error: err.message
-        });
-      }
-
-      if (results.affectedRows === 0) {
-        return res.status(404).json({
-          success: false,
-          message: 'Bank account not found'
-        });
-      }
-
-      // Fetch updated record to return in response
-      const getUpdatedRecord = "SELECT id, status, status_note FROM bankaccount WHERE id = ?";
-      connection.query(getUpdatedRecord, [id], (err, record) => {
-        if (err) {
-          return res.status(500).json({
-            success: false,
-            message: 'Error fetching updated record'
-          });
-        }
-
-        res.json({
-          success: true,
-          message: `Status updated successfully`,
-          data: {
-            id: record[0].id,
-            status: record[0].status,
-            status_text: status === 1 ? 'Approved' : status === 2 ? 'Rejected' : 'Pending',
-            note: record[0].status_note,
-          }
-        });
-      });
-    });
-  } catch (error) {
-    console.error('Server error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Server error',
-      error: error.message
-    });
-  }
-});
 
 module.exports = router;

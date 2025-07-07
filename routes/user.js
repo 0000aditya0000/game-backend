@@ -252,50 +252,7 @@ const propagateReferral = async (newUserId, referrerId) => {
   }
 };
 
-router.get("/referrals/:userId", async (req, res) => {
-  const { userId } = req.params;
 
-  try {
-    // Get all referrals for this user up to level 5
-    const referrals = await new Promise((resolve, reject) => {
-      const sql = `
-          SELECT 
-            u.id,
-            u.name,
-            u.username,
-            u.email,
-            DATE(u.created_at) AS join_date,
-            r.level,
-            (SELECT d.amount FROM deposits d WHERE d.userId = u.id ORDER BY d.created_at ASC LIMIT 1) AS first_deposit,
-            (SELECT SUM(d.amount) FROM deposits d WHERE d.userId = u.id) AS total_deposit,
-            (SELECT SUM(b.amount) FROM bets b WHERE b.user_id = u.id) AS total_bets,            
-            (SELECT IFNULL(SUM(c.amount), 0) FROM referralcommissionhistory c WHERE c.user_id = ? AND c.referred_user_id = u.id AND c.credited = 0 ) AS pending_commission
-            FROM referrals r JOIN users u ON r.referred_id = u.id WHERE r.referrer_id = ? ORDER BY r.level
-        `;
-      const [referrerId] = [req.params.userId];
-
-      connection.query(sql, [referrerId, referrerId], (err, results) => {
-        if (err) return reject(err);
-        resolve(results);
-      });
-    });
-
-    // Group referrals by level
-    const referralsByLevel = {};
-    for (let i = 1; i <= 5; i++) {
-      referralsByLevel[`level${i}`] = referrals.filter(ref => ref.level === i);
-    }
-
-    res.json({
-      userId,
-      totalReferrals: referrals.length,
-      referralsByLevel
-    });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Server error" });
-  }
-});
 
 
 router.get("/referrals/today-summary/:userId", async (req, res) => {
@@ -1097,6 +1054,51 @@ router.use(authenticateToken);
 
 //----------------------------------------------------------------------------------
 
+router.get("/referrals/:userId", async (req, res) => {
+  const { userId } = req.params;
+
+  try {
+    // Get all referrals for this user up to level 5
+    const referrals = await new Promise((resolve, reject) => {
+      const sql = `
+          SELECT 
+            u.id,
+            u.name,
+            u.username,
+            u.email,
+            DATE(u.created_at) AS join_date,
+            r.level,
+            (SELECT d.amount FROM deposits d WHERE d.userId = u.id ORDER BY d.created_at ASC LIMIT 1) AS first_deposit,
+            (SELECT SUM(d.amount) FROM deposits d WHERE d.userId = u.id) AS total_deposit,
+            (SELECT SUM(b.amount) FROM bets b WHERE b.user_id = u.id) AS total_bets,            
+            (SELECT IFNULL(SUM(c.amount), 0) FROM referralcommissionhistory c WHERE c.user_id = ? AND c.referred_user_id = u.id AND c.credited = 0 ) AS pending_commission
+            FROM referrals r JOIN users u ON r.referred_id = u.id WHERE r.referrer_id = ? ORDER BY r.level
+        `;
+      const [referrerId] = [req.params.userId];
+
+      connection.query(sql, [referrerId, referrerId], (err, results) => {
+        if (err) return reject(err);
+        resolve(results);
+      });
+    });
+
+    // Group referrals by level
+    const referralsByLevel = {};
+    for (let i = 1; i <= 5; i++) {
+      referralsByLevel[`level${i}`] = referrals.filter(ref => ref.level === i);
+    }
+
+    res.json({
+      userId,
+      totalReferrals: referrals.length,
+      referralsByLevel
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
 // Get all users
 router.get('/allusers', async (req, res) => {
   try {
@@ -1151,7 +1153,7 @@ router.get('/user/:id',async (req, res) => {
 
 
 //Get one user's wallet by id
-router.get('/wallet/:id',authenticateToken, async (req, res) => {
+router.get('/wallet/:id', async (req, res) => {
   const userId = req.params.id;
   console.log(userId, "name");
   try {
