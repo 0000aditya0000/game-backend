@@ -255,183 +255,6 @@ const propagateReferral = async (newUserId, referrerId) => {
 
 
 
-router.get("/referrals/today-summary/:userId", async (req, res) => {
-  const { userId } = req.params;
-  const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
-
-  try {
-    // 1. Check user existence
-    const [userCheck] = await new Promise((resolve, reject) => {
-      connection.query("SELECT id FROM users WHERE id = ?", [userId], (err, results) => {
-        if (err) return reject(err);
-        resolve(results);
-      });
-    });
-
-    if (!userCheck) {
-      return res.status(404).json({ success: false, message: "User not found" });
-    }
-
-    // 2. Get today's referral summary
-    const summary = await new Promise((resolve, reject) => {
-      const sql = `
-        SELECT 
-          u.id,
-          u.name,
-          u.username,
-          u.email,
-          r.level,
-          (SELECT d.amount FROM deposits d WHERE d.userId = u.id AND DATE(d.created_at) = ? ORDER BY d.created_at ASC LIMIT 1) AS first_deposit,
-          (SELECT SUM(d.amount) FROM deposits d WHERE d.userId = u.id AND DATE(d.created_at) = ?) AS total_deposit,
-          (SELECT SUM(b.amount) FROM bets b WHERE b.user_id = u.id) AS total_bets,            
-          (SELECT IFNULL(SUM(c.amount), 0) FROM referralcommissionhistory c WHERE c.user_id = ? AND c.referred_user_id = u.id AND c.credited = 0) AS pending_commission
-        FROM referrals r 
-        JOIN users u ON r.referred_id = u.id
-        WHERE r.referrer_id = ?
-        AND DATE(u.created_at) = ?
-        ORDER BY r.level
-      `;
-
-      connection.query(sql, [today, today, userId, userId, today], (err, results) => {
-        if (err) return reject(err);
-        resolve(results);
-      });
-    });
-
-    // 3. Group by level
-    const referralsByLevel = {
-      level1: [],
-      level2: [],
-      level3: [],
-      level4: [],
-      level5: []
-    };
-
-    for (const row of summary) {
-      const levelKey = `level${row.level}`;
-      referralsByLevel[levelKey].push({
-        id: row.id,
-        name: row.name,
-        username: row.username,
-        email: row.email,
-        level: row.level,
-        first_deposit: parseFloat(row.first_deposit || 0).toFixed(2),
-        total_deposit: parseFloat(row.total_deposit || 0).toFixed(2),
-        total_bets: row.total_bets ? parseFloat(row.total_bets).toFixed(2) : null,
-        pending_commission: parseFloat(row.pending_commission || 0).toFixed(2)
-      });
-    }
-
-    const totalReferrals = summary.length;
-
-    res.json({
-      userId,
-      totalReferrals,
-      referralsByLevel
-    });
-
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Server error" });
-  }
-});
-
-
-router.get("/referralsbydate/:userId", async (req, res) => {
-  const { userId } = req.params;
-  const { dateType } = req.query;
-
-  // Optional date filter logic
- const getDateRange = (type) => {
-  let startDate, endDate;
-
-  switch (type) {
-    case "today":
-      startDate = moment().startOf("day").format("YYYY-MM-DD");
-      endDate = moment().endOf("day").format("YYYY-MM-DD");
-      break;
-
-    case "yesterday":
-      startDate = moment().subtract(1, "days").startOf("day").format("YYYY-MM-DD");
-      endDate = moment().subtract(1, "days").endOf("day").format("YYYY-MM-DD");
-      break;
-
-    case "lastMonth":
-      startDate = moment().subtract(1, "months").startOf("month").format("YYYY-MM-DD");
-      endDate = moment().subtract(1, "months").endOf("month").format("YYYY-MM-DD");
-      break;
-
-    default:
-      startDate = null;
-      endDate = null;
-  }
-
-  return { startDate, endDate };
-};
-
-
-  const { startDate, endDate } = getDateRange(dateType);
-
-  try {
-    const referrals = await new Promise((resolve, reject) => {
-      let sql = `
-        SELECT 
-          u.id,
-          u.name,
-          u.username,
-          u.email,
-          DATE(u.created_at) AS join_date,
-          r.level,
-          (SELECT d.amount FROM deposits d WHERE d.userId = u.id ORDER BY d.created_at ASC LIMIT 1) AS first_deposit,
-          (SELECT SUM(d.amount) FROM deposits d WHERE d.userId = u.id) AS total_deposit,
-          (SELECT SUM(b.amount) FROM bets b WHERE b.user_id = u.id) AS total_bets,
-          (SELECT IFNULL(SUM(c.amount), 0) FROM referralcommissionhistory c 
-            WHERE c.user_id = ? AND c.referred_user_id = u.id AND c.credited = 0) AS pending_commission
-        FROM referrals r 
-        JOIN users u ON r.referred_id = u.id 
-        WHERE r.referrer_id = ?
-      `;
-
-      const params = [userId, userId];
-
-      if (startDate && endDate) {
-        sql += ` AND DATE(u.created_at) BETWEEN ? AND ?`;
-        params.push(startDate, endDate);
-      }
-
-      sql += ` ORDER BY r.level`;
-
-      connection.query(sql, params, (err, results) => {
-        if (err) return reject(err);
-        resolve(results);
-      });
-    });
-
-    // Group referrals by level
-    const referralsByLevel = {};
-    for (let i = 1; i <= 5; i++) {
-      referralsByLevel[`level${i}`] = referrals.filter(ref => ref.level === i);
-    }
-
-    res.json({
-      userId,
-      dateType: dateType || "all",
-      dateRange: startDate ? { startDate, endDate } : "All Time",
-      totalReferrals: referrals.length,
-      referralsByLevel
-    });
-
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Server error" });
-  }
-});
-
-
-
-
-
-
 // User login
 // router.post('/login', async (req, res) => {
 //   // Destructure only email and password from the request body
@@ -1053,6 +876,178 @@ router.get('/report/transactions/:userId', async (req, res) => {
 router.use(authenticateToken);
 
 //----------------------------------------------------------------------------------
+
+
+
+router.get("/referrals/today-summary/:userId", async (req, res) => {
+  const { userId } = req.params;
+  const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+
+  try {
+    // 1. Check user existence
+    const [userCheck] = await new Promise((resolve, reject) => {
+      connection.query("SELECT id FROM users WHERE id = ?", [userId], (err, results) => {
+        if (err) return reject(err);
+        resolve(results);
+      });
+    });
+
+    if (!userCheck) {
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
+
+    // 2. Get today's referral summary
+    const summary = await new Promise((resolve, reject) => {
+      const sql = `
+        SELECT 
+          u.id,
+          u.name,
+          u.username,
+          u.email,
+          r.level,
+          (SELECT d.amount FROM deposits d WHERE d.userId = u.id AND DATE(d.created_at) = ? ORDER BY d.created_at ASC LIMIT 1) AS first_deposit,
+          (SELECT SUM(d.amount) FROM deposits d WHERE d.userId = u.id AND DATE(d.created_at) = ?) AS total_deposit,
+          (SELECT SUM(b.amount) FROM bets b WHERE b.user_id = u.id) AS total_bets,            
+          (SELECT IFNULL(SUM(c.amount), 0) FROM referralcommissionhistory c WHERE c.user_id = ? AND c.referred_user_id = u.id AND c.credited = 0) AS pending_commission
+        FROM referrals r 
+        JOIN users u ON r.referred_id = u.id
+        WHERE r.referrer_id = ?
+        AND DATE(u.created_at) = ?
+        ORDER BY r.level
+      `;
+
+      connection.query(sql, [today, today, userId, userId, today], (err, results) => {
+        if (err) return reject(err);
+        resolve(results);
+      });
+    });
+
+    // 3. Group by level
+    const referralsByLevel = {
+      level1: [],
+      level2: [],
+      level3: [],
+      level4: [],
+      level5: []
+    };
+
+    for (const row of summary) {
+      const levelKey = `level${row.level}`;
+      referralsByLevel[levelKey].push({
+        id: row.id,
+        name: row.name,
+        username: row.username,
+        email: row.email,
+        level: row.level,
+        first_deposit: parseFloat(row.first_deposit || 0).toFixed(2),
+        total_deposit: parseFloat(row.total_deposit || 0).toFixed(2),
+        total_bets: row.total_bets ? parseFloat(row.total_bets).toFixed(2) : null,
+        pending_commission: parseFloat(row.pending_commission || 0).toFixed(2)
+      });
+    }
+
+    const totalReferrals = summary.length;
+
+    res.json({
+      userId,
+      totalReferrals,
+      referralsByLevel
+    });
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+router.get("/referralsbydate/:userId", async (req, res) => {
+  const { userId } = req.params;
+  const { dateType } = req.query;
+
+  // Optional date filter logic
+const getDateRange = (type) => {
+  let startDate, endDate;
+
+  switch (type) {
+    case "today":
+      startDate = moment().startOf("day").format("YYYY-MM-DD");
+      endDate = moment().endOf("day").format("YYYY-MM-DD");
+      break;
+
+    case "yesterday":
+      startDate = moment().subtract(1, "days").startOf("day").format("YYYY-MM-DD");
+      endDate = moment().subtract(1, "days").endOf("day").format("YYYY-MM-DD");
+      break;
+
+    case "lastMonth":
+      startDate = moment().subtract(30, "days").format("YYYY-MM-DD");
+      endDate = moment().format("YYYY-MM-DD");
+      break;
+
+    default:
+      startDate = null;
+      endDate = null;
+  }
+
+  return { startDate, endDate };
+};
+
+  const { startDate, endDate } = getDateRange(dateType);
+
+  try {
+    const referrals = await new Promise((resolve, reject) => {
+      let sql = `
+        SELECT 
+          u.id,
+          u.name,
+          u.username,
+          u.email,
+          DATE(u.created_at) AS join_date,
+          r.level,
+          (SELECT d.amount FROM deposits d WHERE d.userId = u.id ORDER BY d.created_at ASC LIMIT 1) AS first_deposit,
+          (SELECT SUM(d.amount) FROM deposits d WHERE d.userId = u.id) AS total_deposit,
+          (SELECT SUM(b.amount) FROM bets b WHERE b.user_id = u.id) AS total_bets,
+          (SELECT IFNULL(SUM(c.amount), 0) FROM referralcommissionhistory c 
+            WHERE c.user_id = ? AND c.referred_user_id = u.id AND c.credited = 0) AS pending_commission
+        FROM referrals r 
+        JOIN users u ON r.referred_id = u.id 
+        WHERE r.referrer_id = ?
+      `;
+
+      const params = [userId, userId];
+
+      if (startDate && endDate) {
+        sql += ` AND DATE(u.created_at) BETWEEN ? AND ?`;
+        params.push(startDate, endDate);
+      }
+
+      sql += ` ORDER BY r.level`;
+
+      connection.query(sql, params, (err, results) => {
+        if (err) return reject(err);
+        resolve(results);
+      });
+    });
+
+    // Group referrals by level
+    const referralsByLevel = {};
+    for (let i = 1; i <= 5; i++) {
+      referralsByLevel[`level${i}`] = referrals.filter(ref => ref.level === i);
+    }
+
+    res.json({
+      userId,
+      dateType: dateType || "all",
+      dateRange: startDate ? { startDate, endDate } : "All Time",
+      totalReferrals: referrals.length,
+      referralsByLevel
+    });
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Server error" });
+  }
+});
 
 router.get("/referrals/:userId", async (req, res) => {
   const { userId } = req.params;
