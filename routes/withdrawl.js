@@ -316,200 +316,6 @@ router.put('/withdrawal/approve/:id', async (req, res) => {
   }
 });
 
-
-
-
-//============================================================================
-// make the authentication middleware available for all routes in this file
-// This will ensure that all routes in this file require authentication
-              router.use(authenticateToken);
-//=============================================================================
-
-
-// Create a new withdrawal request
-router.post('/withdrawl', async (req, res) => {
-  const { userId, currency, amount, walletAddress, network, bankname } = req.body;
-
-  // 1. Validate userId
-  if (!userId) {
-    return res.status(400).json({
-      success: false,
-      message: 'userId is required'
-    });
-  }
-
-  // 2. Validate currency-specific fields
-  if (currency === 'usdt') {
-    if (!amount || !walletAddress || !network) {
-      return res.status(400).json({
-        success: false,
-        message: 'For USDT withdrawals, amount, walletAddress and network are required'
-      });
-    }
-  } else if (currency === 'inr') {
-    if (!amount || !bankname) {
-      return res.status(400).json({
-        success: false,
-        message: 'For INR withdrawals, amount and bankname are required'
-      });
-    }
-  } else {
-    return res.status(400).json({
-      success: false,
-      message: 'Invalid currency. Must be either "usdt" or "inr"'
-    });
-  }
-
-  try {
-    // 3. Check if user is blocked from withdrawal
-    const blockQuery = `SELECT is_withdrawal_blocked FROM users WHERE id = ?`;
-    connection.query(blockQuery, [userId], (err, userResults) => {
-      if (err) {
-        return res.status(500).json({
-          success: false,
-          message: 'Error checking withdrawal block status'
-        });
-      }
-
-      if (!userResults.length) {
-        return res.status(404).json({
-          success: false,
-          message: 'User not found'
-        });
-      }
-
-      if (userResults[0].is_withdrawal_blocked) {
-        return res.status(403).json({
-          success: false,
-          message: 'Withdrawals are currently blocked for your account by admin'
-        });
-      }
-
-      // 4. Begin Transaction
-      connection.beginTransaction(err => {
-        if (err) {
-          return res.status(500).json({
-            success: false,
-            message: 'Transaction initialization failed'
-          });
-        }
-
-        // 5. Check wallet balance
-        const checkBalanceQuery = `
-          SELECT balance 
-          FROM wallet 
-          WHERE userId = ? AND cryptoname = 'inr'
-        `;
-
-        connection.query(checkBalanceQuery, [userId], (err, results) => {
-          if (err) {
-            return connection.rollback(() => {
-              res.status(500).json({
-                success: false,
-                message: 'Error checking wallet balance'
-              });
-            });
-          }
-
-          if (results.length === 0 || parseFloat(results[0].balance) < parseFloat(amount)) {
-            return connection.rollback(() => {
-              res.status(400).json({
-                success: false,
-                message: 'Insufficient balance'
-              });
-            });
-          }
-
-          // 6. Deduct from wallet
-          const deductBalanceQuery = `
-            UPDATE wallet 
-            SET balance = balance - ? 
-            WHERE userId = ? AND cryptoname = 'inr'
-          `;
-
-          connection.query(deductBalanceQuery, [amount, userId], (err) => {
-            if (err) {
-              return connection.rollback(() => {
-                res.status(500).json({
-                  success: false,
-                  message: 'Error deducting balance from wallet'
-                });
-              });
-            }
-
-            // 7. Insert into withdrawl table
-            let insertQuery;
-            let insertParams;
-
-            if (currency === 'inr') {
-              insertQuery = `
-                INSERT INTO withdrawl (
-                  userId, balance, cryptoname, bankName,
-                  status, createdOn
-                ) VALUES (?, ?, ?, ?, ?, NOW())
-              `;
-              insertParams = [userId, amount, currency, bankname, 0];
-            } else {
-              insertQuery = `
-                INSERT INTO withdrawl (
-                  userId, balance, cryptoname, walletAddress,
-                  networkType, status, createdOn
-                ) VALUES (?, ?, ?, ?, ?, ?, NOW())
-              `;
-              insertParams = [userId, amount, currency, walletAddress, network, 0];
-            }
-
-            connection.query(insertQuery, insertParams, (err, result) => {
-              if (err) {
-                return connection.rollback(() => {
-                  res.status(500).json({
-                    success: false,
-                    message: 'Error creating withdrawal entry'
-                  });
-                });
-              }
-
-              // 8. Commit transaction
-              connection.commit(err => {
-                if (err) {
-                  return connection.rollback(() => {
-                    res.status(500).json({
-                      success: false,
-                      message: 'Error committing transaction'
-                    });
-                  });
-                }
-
-                res.json({
-                  success: true,
-                  message: 'Withdrawal request created successfully',
-                  data: {
-                    withdrawalId: result.insertId,
-                    currency,
-                    amount,
-                    status: 'pending',
-                    ...(currency === 'inr'
-                      ? { bankname }
-                      : { walletAddress, network })
-                  }
-                });
-              });
-            });
-          });
-        });
-      });
-    });
-  } catch (error) {
-    console.error('Error processing withdrawal request:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Internal server error',
-      error: error.message
-    });
-  }
-});
-
-
 // Get all withdrawal entries with user and bank details based on status
 router.get('/withdrawl-requests/:status', async (req, res) => {
   try {
@@ -769,6 +575,202 @@ router.get('/withdrawl-request/:id/:status?', async (req, res) => {
     });
   }
 });
+
+
+
+
+
+//============================================================================
+// make the authentication middleware available for all routes in this file
+// This will ensure that all routes in this file require authentication
+              router.use(authenticateToken);
+//=============================================================================
+
+
+// Create a new withdrawal request
+router.post('/withdrawl', async (req, res) => {
+  const { userId, currency, amount, walletAddress, network, bankname } = req.body;
+
+  // 1. Validate userId
+  if (!userId) {
+    return res.status(400).json({
+      success: false,
+      message: 'userId is required'
+    });
+  }
+
+  // 2. Validate currency-specific fields
+  if (currency === 'usdt') {
+    if (!amount || !walletAddress || !network) {
+      return res.status(400).json({
+        success: false,
+        message: 'For USDT withdrawals, amount, walletAddress and network are required'
+      });
+    }
+  } else if (currency === 'inr') {
+    if (!amount || !bankname) {
+      return res.status(400).json({
+        success: false,
+        message: 'For INR withdrawals, amount and bankname are required'
+      });
+    }
+  } else {
+    return res.status(400).json({
+      success: false,
+      message: 'Invalid currency. Must be either "usdt" or "inr"'
+    });
+  }
+
+  try {
+    // 3. Check if user is blocked from withdrawal
+    const blockQuery = `SELECT is_withdrawal_blocked FROM users WHERE id = ?`;
+    connection.query(blockQuery, [userId], (err, userResults) => {
+      if (err) {
+        return res.status(500).json({
+          success: false,
+          message: 'Error checking withdrawal block status'
+        });
+      }
+
+      if (!userResults.length) {
+        return res.status(404).json({
+          success: false,
+          message: 'User not found'
+        });
+      }
+
+      if (userResults[0].is_withdrawal_blocked) {
+        return res.status(403).json({
+          success: false,
+          message: 'Withdrawals are currently blocked for your account by admin'
+        });
+      }
+
+      // 4. Begin Transaction
+      connection.beginTransaction(err => {
+        if (err) {
+          return res.status(500).json({
+            success: false,
+            message: 'Transaction initialization failed'
+          });
+        }
+
+        // 5. Check wallet balance
+        const checkBalanceQuery = `
+          SELECT balance 
+          FROM wallet 
+          WHERE userId = ? AND cryptoname = 'inr'
+        `;
+
+        connection.query(checkBalanceQuery, [userId], (err, results) => {
+          if (err) {
+            return connection.rollback(() => {
+              res.status(500).json({
+                success: false,
+                message: 'Error checking wallet balance'
+              });
+            });
+          }
+
+          if (results.length === 0 || parseFloat(results[0].balance) < parseFloat(amount)) {
+            return connection.rollback(() => {
+              res.status(400).json({
+                success: false,
+                message: 'Insufficient balance'
+              });
+            });
+          }
+
+          // 6. Deduct from wallet
+          const deductBalanceQuery = `
+            UPDATE wallet 
+            SET balance = balance - ? 
+            WHERE userId = ? AND cryptoname = 'inr'
+          `;
+
+          connection.query(deductBalanceQuery, [amount, userId], (err) => {
+            if (err) {
+              return connection.rollback(() => {
+                res.status(500).json({
+                  success: false,
+                  message: 'Error deducting balance from wallet'
+                });
+              });
+            }
+
+            // 7. Insert into withdrawl table
+            let insertQuery;
+            let insertParams;
+
+            if (currency === 'inr') {
+              insertQuery = `
+                INSERT INTO withdrawl (
+                  userId, balance, cryptoname, bankName,
+                  status, createdOn
+                ) VALUES (?, ?, ?, ?, ?, NOW())
+              `;
+              insertParams = [userId, amount, currency, bankname, 0];
+            } else {
+              insertQuery = `
+                INSERT INTO withdrawl (
+                  userId, balance, cryptoname, walletAddress,
+                  networkType, status, createdOn
+                ) VALUES (?, ?, ?, ?, ?, ?, NOW())
+              `;
+              insertParams = [userId, amount, currency, walletAddress, network, 0];
+            }
+
+            connection.query(insertQuery, insertParams, (err, result) => {
+              if (err) {
+                return connection.rollback(() => {
+                  res.status(500).json({
+                    success: false,
+                    message: 'Error creating withdrawal entry'
+                  });
+                });
+              }
+
+              // 8. Commit transaction
+              connection.commit(err => {
+                if (err) {
+                  return connection.rollback(() => {
+                    res.status(500).json({
+                      success: false,
+                      message: 'Error committing transaction'
+                    });
+                  });
+                }
+
+                res.json({
+                  success: true,
+                  message: 'Withdrawal request created successfully',
+                  data: {
+                    withdrawalId: result.insertId,
+                    currency,
+                    amount,
+                    status: 'pending',
+                    ...(currency === 'inr'
+                      ? { bankname }
+                      : { walletAddress, network })
+                  }
+                });
+              });
+            });
+          });
+        });
+      });
+    });
+  } catch (error) {
+    console.error('Error processing withdrawal request:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error',
+      error: error.message
+    });
+  }
+});
+
+
 
 
 
