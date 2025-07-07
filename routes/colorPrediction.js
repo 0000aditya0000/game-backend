@@ -573,17 +573,6 @@ app.post("/period", async (req, res) => {
 
 
 
-
-
-
-
-
-//============================================================================
-// This will ensure that all below routes in this file require authentication
-              app.use(authenticateToken);
-//=============================================================================
-
-
 // ===================  Get color bet report for a specific period =================
 // app.get('/color-bet-report/:periodNumber', async (req, res) => {
 //   try {
@@ -794,72 +783,6 @@ app.get('/color-bet-report/:periodNumber', async (req, res) => {
 });
 
 
- //============ Place a bet with duration and period number modification ==============
-app.post("/place-bet", async (req, res) => {
-  const { userId, betType, betValue, amount, periodNumber, duration } = req.body;
-
-  try {
-    // Step 1: Validate betType
-    if (!["number", "color", "size"].includes(betType)) {
-      return res.status(400).json({ error: "Invalid bet type." });
-    }
-
-    // Step 2: Validate amount
-    if (isNaN(amount) || amount <= 0) {
-      return res.status(400).json({ error: "Invalid bet amount." });
-    }
-
-    // Step 3: Validate period number
-    if (isNaN(periodNumber) || periodNumber < 1) {
-      return res.status(400).json({ error: "Invalid period number." });
-    }
-
-    // Step 4: Validate duration
-    const allowedDurations = ["1min", "3min", "5min", "10min"];
-    if (!allowedDurations.includes(duration)) {
-      return res.status(400).json({ error: "Invalid duration. Allowed: 1min, 3min, 5min, 10min." });
-    }
-
-    // Step 5: Check user balance
-    const [user] = await pool.query(
-      `SELECT u.*, w.balance 
-       FROM users u
-       LEFT JOIN wallet w ON u.id = w.userId AND w.cryptoname = 'INR'
-       WHERE u.id = ?`,
-      [userId]
-    );
-
-    if (user.length === 0) {
-      return res.status(404).json({ error: "User not found." });
-    }
-
-    if (Number(user[0].balance) < Number(amount)) {
-      return res.status(400).json({ error: "Insufficient balance." });
-    }
-
-    // Step 6: Deduct amount from wallet
-    await pool.query(
-      `UPDATE wallet w
-       JOIN users u ON u.id = w.userId
-       SET w.balance = w.balance - ?
-       WHERE w.userId = ? AND w.cryptoname = 'INR'`,
-      [amount, userId]
-    );
-
-    // Step 7: Insert bet into bets table with duration
-   await pool.query(
-      `INSERT INTO bets (user_id, bet_type, bet_value, amount, period_number, duration)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      [userId, betType, betValue, amount, periodNumber, duration]
-    );
-    res.json({ message: "Bet placed successfully." });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: "Internal server error." });
-  }
-});
-
-
 app.post("/bet-history", async (req, res) => {
   const { userId } = req.body;
 
@@ -929,6 +852,121 @@ app.post("/bet-history", async (req, res) => {
     res.status(500).json({ error: "Internal server error." });
   }
 });
+
+// Endpoint to fetch user prediction history
+app.get("/prediction/:userid/history", async (req, res) => {
+  try {
+    const { userid } = req.params;
+
+    const query = "SELECT * FROM biddings WHERE userid = ? ORDER BY id DESC";
+    pool.query(query, [userid], (err, results) => {
+      if (err) return res.status(500).json({ error: "Database query error" });
+      if (results.length === 0)
+        return res.status(404).json({ error: "User not found" });
+
+      // Query to fetch the results for the periods
+      const periodIds = results.map((bid) => bid.period);
+      const resultsQuery = "SELECT * FROM results WHERE period IN (?)";
+      pool.query(resultsQuery, [periodIds], (err, resultRecords) => {
+        if (err) return res.status(500).json({ error: "Database query error" });
+
+        // Iterate over the biddings and determine win or lose
+        const historyWithOutcome = results.map((bid) => {
+          // Parse the number array from the biddings table
+          const numbersInBid = JSON.parse(bid.number); // Parse the stringified array
+          const result = resultRecords.find((r) => r.period === bid.period);
+
+          if (result) {
+            // Check if the result.number exists in the array from biddings
+            const isWin = numbersInBid.includes(Number(result.number));
+            return { ...bid, win_or_lose: isWin ? "won" : "lose" };
+          } else {
+            return { ...bid, win_or_lose: "pending" }; // If no result is found, it's a lose
+          }
+        });
+
+        res.json(historyWithOutcome);
+      });
+    });
+  } catch (error) {
+    res.status(500).json({ error: "Error fetching user history" });
+  }
+});
+
+
+//============================================================================
+// This will ensure that all below routes in this file require authentication
+              app.use(authenticateToken);
+//=============================================================================
+
+
+
+ //============ Place a bet with duration and period number modification ==============
+app.post("/place-bet", async (req, res) => {
+  const { userId, betType, betValue, amount, periodNumber, duration } = req.body;
+
+  try {
+    // Step 1: Validate betType
+    if (!["number", "color", "size"].includes(betType)) {
+      return res.status(400).json({ error: "Invalid bet type." });
+    }
+
+    // Step 2: Validate amount
+    if (isNaN(amount) || amount <= 0) {
+      return res.status(400).json({ error: "Invalid bet amount." });
+    }
+
+    // Step 3: Validate period number
+    if (isNaN(periodNumber) || periodNumber < 1) {
+      return res.status(400).json({ error: "Invalid period number." });
+    }
+
+    // Step 4: Validate duration
+    const allowedDurations = ["1min", "3min", "5min", "10min"];
+    if (!allowedDurations.includes(duration)) {
+      return res.status(400).json({ error: "Invalid duration. Allowed: 1min, 3min, 5min, 10min." });
+    }
+
+    // Step 5: Check user balance
+    const [user] = await pool.query(
+      `SELECT u.*, w.balance 
+       FROM users u
+       LEFT JOIN wallet w ON u.id = w.userId AND w.cryptoname = 'INR'
+       WHERE u.id = ?`,
+      [userId]
+    );
+
+    if (user.length === 0) {
+      return res.status(404).json({ error: "User not found." });
+    }
+
+    if (Number(user[0].balance) < Number(amount)) {
+      return res.status(400).json({ error: "Insufficient balance." });
+    }
+
+    // Step 6: Deduct amount from wallet
+    await pool.query(
+      `UPDATE wallet w
+       JOIN users u ON u.id = w.userId
+       SET w.balance = w.balance - ?
+       WHERE w.userId = ? AND w.cryptoname = 'INR'`,
+      [amount, userId]
+    );
+
+    // Step 7: Insert bet into bets table with duration
+   await pool.query(
+      `INSERT INTO bets (user_id, bet_type, bet_value, amount, period_number, duration)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [userId, betType, betValue, amount, periodNumber, duration]
+    );
+    res.json({ message: "Bet placed successfully." });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Internal server error." });
+  }
+});
+
+
 
 app.post("/checkValidBet", async (req, res) => {
   const { userId, duration } = req.body;

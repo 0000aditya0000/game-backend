@@ -53,6 +53,29 @@ router.get('/report/today-recharge-summary', async (req, res) => {
   }
 });
 
+router.get("/get-all-recharges", async (req, res) => {
+  try {
+    const rows = await query(`
+      SELECT 
+        recharge_id,
+        order_id,
+        userId,
+        recharge_amount AS amount,
+        recharge_type AS type,
+        payment_mode AS mode,
+        recharge_status AS status,
+        date,
+        time
+      FROM recharge
+      ORDER BY recharge_id DESC
+    `);
+
+    res.status(200).json(rows);
+  } catch (error) {
+    console.error("Error fetching recharges:", error);
+    res.status(500).json({ message: "Server error" });
+  }
+});
 
 // Helper to wrap callback-based query in a Promise
 const query = (sql, params) => {
@@ -64,12 +87,6 @@ const query = (sql, params) => {
   });
 };
 
-
-//--------------------------------------- Protected Routes----------------------
-
-router.use(authenticateToken);
-
-//----------------------------------------------------------------------------------
 
 router.get("/recharge-detail/:orderId", async (req, res) => {
   const { orderId } = req.params;
@@ -119,29 +136,7 @@ router.get("/recharge-detail/:orderId", async (req, res) => {
   }
 });
 
-router.get("/get-all-recharges", async (req, res) => {
-  try {
-    const rows = await query(`
-      SELECT 
-        recharge_id,
-        order_id,
-        userId,
-        recharge_amount AS amount,
-        recharge_type AS type,
-        payment_mode AS mode,
-        recharge_status AS status,
-        date,
-        time
-      FROM recharge
-      ORDER BY recharge_id DESC
-    `);
 
-    res.status(200).json(rows);
-  } catch (error) {
-    console.error("Error fetching recharges:", error);
-    res.status(500).json({ message: "Server error" });
-  }
-});
 
 
 
