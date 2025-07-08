@@ -4,6 +4,8 @@ const bodyParser = require("body-parser");
 const cors = require("cors");
 const authenticateToken = require('../middleware/authenticateToken');
 const axios = require("axios");
+const { processWeeklyLossCashback } = require("../utils/weeklyCashback");
+
 
 const app = express();
 app.use(bodyParser.json());
@@ -188,25 +190,33 @@ app.post("/bet-history", async (req, res) => {
       return res.status(400).json({ error: "Invalid user ID." });
     }
 
-    // Query to fetch all bets placed by the user
+    // Corrected SQL to avoid duplicate joins from result table
     const [bets] = await pool.query(
       `
-          SELECT 
-              b.id AS bet_id,
-              b.period_number,
-              b.amount AS bet_amount,
-              b.bet_type,
-              b.bet_value,
-              b.status,
-              b.placed_at AS bet_date,
-              r.result_number,
-              r.result_color,
-              r.result_size
-          FROM bets b
-          LEFT JOIN result r ON b.period_number = r.period_number
-          WHERE b.user_id = ?
-          ORDER BY b.placed_at DESC
-          `,
+      SELECT 
+        b.id AS bet_id,
+        b.period_number,
+        b.amount AS bet_amount,
+        b.bet_type,
+        b.bet_value,
+        b.status,
+        b.placed_at AS bet_date,
+        r.result_number,
+        r.result_color,
+        r.result_size
+      FROM bets b
+      LEFT JOIN (
+        SELECT r1.*
+        FROM result r1
+        INNER JOIN (
+          SELECT period_number, MAX(id) AS max_id
+          FROM result
+          GROUP BY period_number
+        ) r2 ON r1.id = r2.max_id
+      ) r ON b.period_number = r.period_number
+      WHERE b.user_id = ?
+      ORDER BY b.placed_at DESC
+      `,
       [userId]
     );
 
@@ -215,39 +225,38 @@ app.post("/bet-history", async (req, res) => {
       let status = "lost";
       let amountReceived = 0;
 
-      // Determine if the bet was won
       if (bet.status === "processed") {
-        if (
-          (bet.bet_type === "number" &&
-            parseInt(bet.bet_value) === bet.result_number) ||
-          (bet.bet_type === "color" && bet.bet_value === bet.result_color) ||
-          (bet.bet_type === "size" && bet.bet_value === bet.result_size)
-        ) {
+        const isNumberWon = bet.bet_type === "number" && parseInt(bet.bet_value) === bet.result_number;
+        const isColorWon = bet.bet_type === "color" && bet.bet_value === bet.result_color;
+        const isSizeWon = bet.bet_type === "size" && bet.bet_value === bet.result_size;
+
+        if (isNumberWon || isColorWon || isSizeWon) {
           status = "won";
           amountReceived = bet.bet_amount * 1.9; // 90% return
         }
       } else {
-        status = "pending"; // Bet has not been processed yet
+        status = "pending";
       }
 
       return {
         betId: bet.bet_id,
         periodNumber: bet.period_number,
-        amount: bet.bet_amount,
+        amount: parseFloat(bet.bet_amount),
         betType: bet.bet_type,
         betValue: bet.bet_value,
-        status: status,
-        amountReceived: amountReceived,
+        status,
+        amountReceived,
         date: bet.bet_date,
       };
     });
 
     res.json({ betHistory });
   } catch (error) {
-    console.error(error);
+    console.error(" Error in /bet-history:", error);
     res.status(500).json({ error: "Internal server error." });
   }
 });
+
 
 
 
@@ -783,75 +792,75 @@ app.get('/color-bet-report/:periodNumber', async (req, res) => {
 });
 
 
-app.post("/bet-history", async (req, res) => {
-  const { userId } = req.body;
+// app.post("/bet-history", async (req, res) => {
+//   const { userId } = req.body;
 
-  try {
-    // Validate input
-    if (!userId || isNaN(userId)) {
-      return res.status(400).json({ error: "Invalid user ID." });
-    }
+//   try {
+//     // Validate input
+//     if (!userId || isNaN(userId)) {
+//       return res.status(400).json({ error: "Invalid user ID." });
+//     }
 
-    // Query to fetch all bets placed by the user
-    const [bets] = await pool.query(
-      `
-          SELECT 
-              b.id AS bet_id,
-              b.period_number,
-              b.amount AS bet_amount,
-              b.bet_type,
-              b.bet_value,
-              b.status,
-              b.placed_at AS bet_date,
-              r.result_number,
-              r.result_color,
-              r.result_size
-          FROM bets b
-          LEFT JOIN result r ON b.period_number = r.period_number
-          WHERE b.user_id = ?
-          ORDER BY b.placed_at DESC
-          `,
-      [userId]
-    );
+//     // Query to fetch all bets placed by the user
+//     const [bets] = await pool.query(
+//       `
+//           SELECT 
+//               b.id AS bet_id,
+//               b.period_number,
+//               b.amount AS bet_amount,
+//               b.bet_type,
+//               b.bet_value,
+//               b.status,
+//               b.placed_at AS bet_date,
+//               r.result_number,
+//               r.result_color,
+//               r.result_size
+//           FROM bets b
+//           LEFT JOIN result r ON b.period_number = r.period_number
+//           WHERE b.user_id = ?
+//           ORDER BY b.placed_at DESC
+//           `,
+//       [userId]
+//     );
 
-    // Process the results to calculate status and winnings
-    const betHistory = bets.map((bet) => {
-      let status = "lost";
-      let amountReceived = 0;
+//     // Process the results to calculate status and winnings
+//     const betHistory = bets.map((bet) => {
+//       let status = "lost";
+//       let amountReceived = 0;
 
-      // Determine if the bet was won
-      if (bet.status === "processed") {
-        if (
-          (bet.bet_type === "number" &&
-            parseInt(bet.bet_value) === bet.result_number) ||
-          (bet.bet_type === "color" && bet.bet_value === bet.result_color) ||
-          (bet.bet_type === "size" && bet.bet_value === bet.result_size)
-        ) {
-          status = "won";
-          amountReceived = bet.bet_amount * 1.9; // 90% return
-        }
-      } else {
-        status = "pending"; // Bet has not been processed yet
-      }
+//       // Determine if the bet was won
+//       if (bet.status === "processed") {
+//         if (
+//           (bet.bet_type === "number" &&
+//             parseInt(bet.bet_value) === bet.result_number) ||
+//           (bet.bet_type === "color" && bet.bet_value === bet.result_color) ||
+//           (bet.bet_type === "size" && bet.bet_value === bet.result_size)
+//         ) {
+//           status = "won";
+//           amountReceived = bet.bet_amount * 1.9; // 90% return
+//         }
+//       } else {
+//         status = "pending"; // Bet has not been processed yet
+//       }
 
-      return {
-        betId: bet.bet_id,
-        periodNumber: bet.period_number,
-        amount: bet.bet_amount,
-        betType: bet.bet_type,
-        betValue: bet.bet_value,
-        status: status,
-        amountReceived: amountReceived,
-        date: bet.bet_date,
-      };
-    });
+//       return {
+//         betId: bet.bet_id,
+//         periodNumber: bet.period_number,
+//         amount: bet.bet_amount,
+//         betType: bet.bet_type,
+//         betValue: bet.bet_value,
+//         status: status,
+//         amountReceived: amountReceived,
+//         date: bet.bet_date,
+//       };
+//     });
 
-    res.json({ betHistory });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: "Internal server error." });
-  }
-});
+//     res.json({ betHistory });
+//   } catch (error) {
+//     console.error(error);
+//     res.status(500).json({ error: "Internal server error." });
+//   }
+// });
 
 // Endpoint to fetch user prediction history
 app.get("/prediction/:userid/history", async (req, res) => {
@@ -893,6 +902,10 @@ app.get("/prediction/:userid/history", async (req, res) => {
   }
 });
 
+app.get("/test-weekly-cashback", async (req, res) => {
+  await processWeeklyLossCashback();
+  res.send("Manual cashback processed.");
+});
 
 //============================================================================
 // This will ensure that all below routes in this file require authentication
