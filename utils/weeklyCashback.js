@@ -105,7 +105,7 @@ async function processWeeklyLossCashback() {
 // Cron Schedule — Every Sunday 11:59 PM
 // =======================
 cron.schedule("59 23 * * 0", async () => {
-  console.log(" Running weekly cashback job...");
+  console.log("Running weekly cashback job...");
   await processWeeklyLossCashback();
 });
 
