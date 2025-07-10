@@ -53,6 +53,7 @@ app.post("/latest-result", async (req, res) => {
 
     query += " ORDER BY period_number DESC LIMIT 1"; // Only one recent result
 
+    
     // 3. Query the DB
     const [results] = await pool.query(query, queryParams);
 
