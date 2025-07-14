@@ -2582,6 +2582,31 @@ router.post('/deposit', async (req, res) => {
     });
 
     const isFirstDeposit = !depositResult;
+    let cashbackAmount = 0;
+ 
+
+// Step: Give 200% cashback if INR and first deposit
+if (isFirstDeposit && cryptoname === 'INR') {
+   cashbackAmount = amount * 2;
+
+  const cashbackQuery = `
+    UPDATE wallet
+    SET balance = balance + ?
+    WHERE userId = ? AND cryptoname = 'INR'
+  `;
+
+  const cashbackResult = await new Promise((resolve, reject) => {
+    connection.query(cashbackQuery, [cashbackAmount, userId], (err, results) => {
+      if (err) return reject(err);
+      resolve(results);
+    });
+  });
+
+  if (cashbackResult.affectedRows === 0) {
+    throw new Error(`Failed to credit INR cashback to wallet.`);
+  }
+}
+
 
     // Update wallet
     const updateWalletQuery = `
@@ -2658,6 +2683,7 @@ router.post('/deposit', async (req, res) => {
       amount,
       orderid,
       isFirstDeposit,
+      cashbackAmount,
       commissionsDistributed,
       note: commissionsDistributed ? 'Commissions will be credited to wallets at 12:00 AM IST' : undefined
     });
