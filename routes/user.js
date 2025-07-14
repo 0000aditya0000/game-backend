@@ -10,6 +10,8 @@ const fs = require('fs');
 const moment = require('moment');
 const { generateAccessToken, generateRefreshToken, verifyRefreshToken } = require('../utils/jwt');
 const authenticateToken = require('../middleware/authenticateToken');
+const { insertGameplayTracking } = require('../utils/gameplay');
+
 const router = express.Router();
 
 const storage = multer.diskStorage({
@@ -2630,12 +2632,19 @@ if (isFirstDeposit && cryptoname === 'INR') {
       INSERT INTO deposits (userId, amount, orderid, cryptoname, is_first)
       VALUES (?, ?, ?, ?, ?)
     `;
-    await new Promise((resolve, reject) => {
+    const depositInsertResult = await new Promise((resolve, reject) => {
       connection.query(insertDepositQuery, [userId, amount, orderid, cryptoname, isFirstDeposit], (err, results) => {
         if (err) return reject(err);
         resolve(results);
       });
     });
+
+    
+    const depositId = depositInsertResult.insertId;
+      // Insert gameplay tracking if INR
+    if (cryptoname === 'INR') {
+      await insertGameplayTracking(userId, depositId, amount);
+    }
 
     // Handle referral commissions if first deposit
     let commissionsDistributed = false;
