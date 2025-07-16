@@ -5,6 +5,7 @@ const cors = require("cors");
 const authenticateToken = require('../middleware/authenticateToken');
 const axios = require("axios");
 const { processWeeklyLossCashback } = require("../utils/weeklyCashback");
+const { updateGameplayTracking } = require("../utils/gameplay");
 const { getIO } = require("../utils/socket");
 
 
@@ -772,6 +773,10 @@ app.post("/place-bet", async (req, res) => {
        VALUES (?, ?, ?, ?, ?, ?)`,
       [userId, betType, betValue, amount, periodNumber, duration]
     );
+ 
+    // Step 8: Update gameplay tracking
+    await updateGameplayTracking(userId, amount);
+
     res.json({ message: "Bet placed successfully." });
   } catch (error) {
     console.error(error);
