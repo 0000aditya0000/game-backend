@@ -111,7 +111,7 @@ const canWithdraw = (userId) => {
           const totalPlayed = parseFloat(played_amount) + turnover;
 
           if (totalPlayed >= required_gameplay) {
-            // 🛠 Update played_amount and mark as completed
+            //  Update played_amount and mark as completed
             const updateQuery = `
               UPDATE gameplay_tracking
               SET played_amount = ?, is_completed = 1
