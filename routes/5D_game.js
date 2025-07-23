@@ -279,7 +279,7 @@ const check5DWinner = (bet, result) => {
 };
 
 // ================== Place Bet API =================
-app.post("/place-bet-5dgame", async (req, res) => {
+app.post("/place-bet-5d", async (req, res) => {
   try {
     const { userId, position, betType, betValue, amount, periodNumber, timer } = req.body;
 
@@ -393,7 +393,7 @@ app.post("/place-bet-5dgame", async (req, res) => {
 });
 
 // ================== Generate Result API =================
-app.post("/generate-result-5d-game", async (req, res) => {
+app.post("/generate-result-5d", async (req, res) => {
   try {
     const { periodNumber, timer } = req.body;
     const io = getIO();
@@ -517,6 +517,110 @@ app.post("/generate-result-5d-game", async (req, res) => {
     });
   }
 });
+
+app.post("/period-5d", async (req, res) => {
+  const { mins } = req.body; // 'mins' means duration like '1min', '3min', etc.
+  console.log("API hit for duration:", mins);
+
+  try {
+    const [rows] = await pool.query(
+      "SELECT period_number FROM result_5d WHERE timer = ? ORDER BY period_number DESC LIMIT 1",
+      [mins]
+    );
+
+    let newPeriodNumber;
+
+    if (rows.length > 0) {
+      // Get the last period_number and increment it
+      const lastPeriod = parseInt(rows[0].period_number);
+      newPeriodNumber = lastPeriod + 1;
+    } else {
+      // If no previous period exists for this duration
+      newPeriodNumber = 1;
+    }
+
+    res.json({ period_number: newPeriodNumber });
+  } catch (error) {
+    console.error(" MySQL/Server error:", error);
+    res.status(500).json({ error: "Server error", details: error.message });
+  }
+});
+
+//=================== user bet history API===================
+app.get("/bet-history-5d", async (req, res) => {
+  const { userId, timer } = req.body;
+
+  try {
+    const [bets] = await pool.query(
+      `SELECT * FROM bets_5d 
+       WHERE user_id = ? AND timer = ? 
+       ORDER BY created_at DESC`,
+      [userId, timer]
+    );
+
+    if (bets.length === 0) {
+      return res.status(404).json({ success: false, message: "No bets found for this user and timer" });
+    }
+
+    res.json({ success: true, bets });
+  } catch (error) {
+    console.error("Error fetching bet history:", error);
+    res.status(500).json({ success: false, message: "Error fetching bet history", error: error.message });
+  }
+});
+
+//===================result history API===================
+app.get("/result-history-5d", async (req, res) => {
+  const { timer } = req.body;
+
+  try {
+    const [results] = await pool.query(
+      `SELECT * FROM result_5d 
+       WHERE timer = ? 
+       ORDER BY period_number DESC`,
+      [timer]
+    );
+
+    if (results.length === 0) {
+      return res.status(404).json({ success: false, message: "No results found for this timer" });
+    }
+
+    res.json({ success: true, results });
+  } catch (error) {
+    console.error("Error fetching result history:", error);
+    res.status(500).json({ success: false, message: "Error fetching result history", error: error.message });
+  }
+});
+
+//========= get latest result API =========
+app.get("/latest-result-5d", async (req, res) => {
+  const { timer, periodNumber } = req.body;
+  try {
+    const [results] = await pool.query(
+      `SELECT * FROM result_5d 
+       WHERE timer = ? AND period_number = ? 
+       ORDER BY created_at DESC LIMIT 1`,
+      [timer, periodNumber]
+    );
+
+    if (results.length === 0) {
+      return res.status(404).json({ success: false, message: "No results found for this duration and period" });
+    }
+
+    res.json({ success: true, result: results[0] });
+  } catch (error) {
+    console.error("Error fetching latest result:", error);
+    res.status(500).json({ success: false, message: "Error fetching latest result", error: error.message });
+  } });
+
+ 
+
+
+
+
+
+
+
 
 
 module.exports = app;
