@@ -2,6 +2,8 @@ const express = require('express');
 const connection = require('../config/db'); // Ensure database connection is configured
 const router = express.Router();
 const authenticateToken = require('../middleware/authenticateToken'); 
+const { canWithdraw } = require("../utils/gameplay"); 
+
 // currency
 // : 
 // "btc"
@@ -622,6 +624,15 @@ router.post('/withdrawl', async (req, res) => {
   }
 
   try {
+    //  Check if user has completed required gameplay
+     const isAllowed = await canWithdraw(userId);
+    if (!isAllowed) {
+      return res.status(403).json({
+        success: false,
+        message: 'You must complete required gameplay before withdrawing.'
+      });
+    }
+
     // 3. Check if user is blocked from withdrawal
     const blockQuery = `SELECT is_withdrawal_blocked FROM users WHERE id = ?`;
     connection.query(blockQuery, [userId], (err, userResults) => {
@@ -645,6 +656,8 @@ router.post('/withdrawl', async (req, res) => {
           message: 'Withdrawals are currently blocked for your account by admin'
         });
       }
+
+      
 
       // 4. Begin Transaction
       connection.beginTransaction(err => {

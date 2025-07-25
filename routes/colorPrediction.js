@@ -5,6 +5,7 @@ const cors = require("cors");
 const authenticateToken = require('../middleware/authenticateToken');
 const axios = require("axios");
 const { processWeeklyLossCashback } = require("../utils/weeklyCashback");
+const { updateGameplayTracking } = require("../utils/gameplay");
 const { getIO } = require("../utils/socket");
 
 
@@ -79,8 +80,9 @@ app.post("/latest-result", async (req, res) => {
 app.post("/generate-result", async (req, res) => {
   try {
     const { periodNumber, duration } = req.body;
-      const io = getIO(); // 
+    const io = getIO();
 
+    // Validate input
     if (isNaN(periodNumber) || periodNumber < 1) {
       return res.status(400).json({ error: "Invalid period number." });
     }
@@ -88,7 +90,15 @@ app.post("/generate-result", async (req, res) => {
       return res.status(400).json({ error: "Invalid duration." });
     }
 
-    // Fetch bets
+    // Fetch all types of bets (number, color, size)
+    const [numberBets] = await pool.query(
+      `SELECT bet_value, SUM(amount) AS total_amount 
+       FROM bets 
+       WHERE bet_type = 'number' AND period_number = ? AND duration = ?
+       GROUP BY bet_value`,
+      [periodNumber, duration]
+    );
+
     const [colorBets] = await pool.query(
       `SELECT bet_value, SUM(amount) AS total_amount 
        FROM bets 
@@ -97,11 +107,27 @@ app.post("/generate-result", async (req, res) => {
       [periodNumber, duration]
     );
 
-    // Winning color logic
-    const redAmt = parseFloat(colorBets.find(b => b.bet_value === "red")?.total_amount || 0);
-    const greenAmt = parseFloat(colorBets.find(b => b.bet_value === "green")?.total_amount || 0);
-    const violetAmt = parseFloat(colorBets.find(b => b.bet_value === "voilet")?.total_amount || 0);
+    const [sizeBets] = await pool.query(
+      `SELECT bet_value, SUM(amount) AS total_amount 
+       FROM bets 
+       WHERE bet_type = 'size' AND period_number = ? AND duration = ?
+       GROUP BY bet_value`,
+      [periodNumber, duration]
+    );
 
+    // Winning color logic
+    let winningColor;
+    const redBet = colorBets.find(b => b.bet_value === "red");
+    const greenBet = colorBets.find(b => b.bet_value === "green");
+    const violetBet = colorBets.find(b => b.bet_value === "voilet");
+
+    const redAmt = parseFloat(redBet?.total_amount || 0);
+    const greenAmt = parseFloat(greenBet?.total_amount || 0);
+    const violetAmt = parseFloat(violetBet?.total_amount || 0);
+
+    console.log({ redAmt, greenAmt, violetAmt }); // For debugging
+
+    // Exclude violet if it's the highest
     let allowedColors = ["red", "green", "voilet"];
     const maxAmt = Math.max(redAmt, greenAmt, violetAmt);
 
@@ -109,39 +135,77 @@ app.post("/generate-result", async (req, res) => {
       allowedColors = allowedColors.filter(c => c !== "voilet");
     }
 
-    let winningColor;
+    // Apply custom rule logic
     if (greenAmt === redAmt && greenAmt > 0) {
       winningColor = allowedColors.includes("voilet")
         ? "voilet"
         : allowedColors[Math.floor(Math.random() * allowedColors.length)];
     } else if (greenAmt > redAmt) {
-      winningColor = allowedColors.filter(c => c !== "green")[Math.floor(Math.random() * 2)];
+      const choices = allowedColors.filter(c => c !== "green");
+      winningColor = choices[Math.floor(Math.random() * choices.length)];
     } else if (redAmt > greenAmt) {
-      winningColor = allowedColors.filter(c => c !== "red")[Math.floor(Math.random() * 2)];
+      const choices = allowedColors.filter(c => c !== "red");
+      winningColor = choices[Math.floor(Math.random() * choices.length)];
     } else {
       winningColor = allowedColors[Math.floor(Math.random() * allowedColors.length)];
     }
 
+    // Winning number and size
     const validNumbers = {
       red: [1, 3, 7, 9],
       green: [2, 4, 6, 8],
       voilet: [0, 5, 0, 5],
     };
 
-    const winningNumber = validNumbers[winningColor][Math.floor(Math.random() * 4)];
-    const winningSize = getSize(winningNumber); // e.g., small/large
+    const numbers = validNumbers[winningColor];
+    const winningNumber = numbers[Math.floor(Math.random() * numbers.length)];
+    const winningSize = getSize(winningNumber); // Use your existing getSize function
 
+    // Save result to DB
     await pool.query(
-      `INSERT INTO result (result_number, result_color, result_size, period_number, duration)
+      `INSERT INTO result (result_number, result_color, result_size, period_number, duration) 
        VALUES (?, ?, ?, ?, ?)`,
       [winningNumber, winningColor, winningSize, periodNumber, duration]
     );
+
+    // Fetch all bets for payout distribution
+    const [bets] = await pool.query(
+      `SELECT * FROM bets WHERE period_number = ? AND duration = ?`,
+      [periodNumber, duration]
+    );
+
+    // Payout calculation and distribution
+    for (const bet of bets) {
+      const isWinner =
+        (bet.bet_type === "number" && parseInt(bet.bet_value) === winningNumber) ||
+        (bet.bet_type === "color" && bet.bet_value === winningColor) ||
+        (bet.bet_type === "size" && bet.bet_value === winningSize);
+
+      if (isWinner) {
+        const winnings = bet.amount * 1.9;
+        await pool.query(
+          `UPDATE wallet w
+           JOIN users u ON u.id = w.UserId
+           SET w.balance = w.balance + ?
+           WHERE w.UserId = ? AND w.cryptoname = 'INR'`,
+          [winnings, bet.user_id]
+        );
+      }
+    }
+
+    // Mark bets as processed
+    await pool.query(
+      `UPDATE bets SET status = 'processed' WHERE period_number = ? AND duration = ?`,
+      [periodNumber, duration]
+    );
+
+    console.log(winningColor);
 
     // Emit socket event
     const finalResult = {
       success: true,
       period_number: periodNumber,
-      duration,
+      duration: duration,
       result: {
         winning_color: winningColor,
         winning_number: winningNumber,
@@ -149,15 +213,19 @@ app.post("/generate-result", async (req, res) => {
       },
     };
 
-    io.emit(`resultUpdate:${duration}`, finalResult); //  Emit to all users
+    io.emit(`resultUpdate:${duration}`, finalResult); // Emit to all users
 
+    // Final response
     res.json(finalResult);
   } catch (error) {
     console.error(error);
-    res.status(500).json({ success: false, message: "Error in generate-result", error: error.message });
+    res.status(500).json({ 
+      success: false, 
+      message: "Error in generate-result", 
+      error: error.message 
+    });
   }
 });
-
 
 
 // Endpoint to get the current remaining time for a specific timer duration
@@ -772,6 +840,10 @@ app.post("/place-bet", async (req, res) => {
        VALUES (?, ?, ?, ?, ?, ?)`,
       [userId, betType, betValue, amount, periodNumber, duration]
     );
+ 
+    // Step 8: Update gameplay tracking
+    await updateGameplayTracking(userId, amount);
+
     res.json({ message: "Bet placed successfully." });
   } catch (error) {
     console.error(error);
