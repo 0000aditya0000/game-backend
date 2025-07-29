@@ -13,8 +13,8 @@ app.use(cors());
 // Database pool
 const pool = mysql.createPool({
   host: "localhost",
-  user: "root", // Replace with your MySQL username
-  password: "", // Replace with your MySQL password
+  user: "lucifer", // Replace with your MySQL username
+  password: "Welcome@noida2024", // Replace with your MySQL password
   database: "stake",
 });
 
@@ -56,7 +56,7 @@ Object.entries(timers5D).forEach(([timer, interval]) => {
           const lastPeriod = rows.length ? rows[0].period_number : 0;
           const nextPeriod = lastPeriod + 1;
 
-          await axios.post("http://localhost:5000/api/5d/generate-result-5d", {
+          await axios.post("https://api.rollix777.com/api/5d/generate-result-5d", {
             periodNumber: nextPeriod,
             timer: timer,
           });
