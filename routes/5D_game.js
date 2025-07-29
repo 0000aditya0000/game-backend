@@ -2,6 +2,7 @@ const express = require("express");
 const mysql = require("mysql2/promise");
 const bodyParser = require("body-parser");
 const cors = require("cors");
+const axios = require("axios");
 const { getIO } = require("../utils/socket");
 
 
@@ -16,6 +17,60 @@ const pool = mysql.createPool({
   password: "", // Replace with your MySQL password
   database: "stake",
 });
+
+
+
+// ================== 5D Centralized Scheduler =================
+const io = getIO();
+const timers5D = {
+  "1min": 60 * 1000,
+  "3min": 3 * 60 * 1000,
+  "5min": 5 * 60 * 1000,
+  "10min": 10 * 60 * 1000,
+};
+
+// Start 5D Game Timers
+Object.entries(timers5D).forEach(([timer, interval]) => {
+  setInterval(() => {
+    const now = Date.now();
+    const elapsedInCycle = now % interval;
+    const remainingTimeMs = interval - elapsedInCycle;
+
+    // Emit timer updates for 5D game
+    io.emit(`5d-timerUpdate:${timer}`, {
+      timer,
+      remainingTimeMs,
+    });
+
+    if (remainingTimeMs <= 1000) {
+      // Generate result when timer ends
+      (async () => {
+        try {
+          console.log(`5D ${timer} timer ending!`);
+
+          const [rows] = await pool.query(
+            "SELECT period_number FROM result_5d WHERE timer = ? ORDER BY period_number DESC LIMIT 1",
+            [timer]
+          );
+
+          const lastPeriod = rows.length ? rows[0].period_number : 0;
+          const nextPeriod = lastPeriod + 1;
+
+          await axios.post("http://localhost:5000/api/5d/generate-result-5d", {
+            periodNumber: nextPeriod,
+            timer: timer,
+          });
+
+          console.log(`++ 5D Result generated [${timer}] Period: ${nextPeriod}`);
+        } catch (err) {
+          console.error(`Error in 5D scheduler for ${timer}:`, err.message);
+        }
+      })();
+    }
+
+  }, 1000); // Tick every 1s
+});
+
 
 
 // ================== Helper Functions =================
@@ -230,8 +285,8 @@ const generateStrategic5DResult = async (periodNumber, timer, pool) => {
     const finalSum = resultDigits.reduce((sum, digit) => sum + digit, 0);
     const drawNumber = resultDigits.join('');
 
-    console.log(`Strategic Result Generated: ${drawNumber}, Sum: ${finalSum}`);
-    console.log(`Position strategies applied for Period ${periodNumber} (${timer})`);
+   // console.log(`Strategic Result Generated: ${drawNumber}, Sum: ${finalSum}`);
+   // console.log(`Position strategies applied for Period ${periodNumber} (${timer})`);
 
     return {
       A: resultDigits[0],
@@ -478,7 +533,7 @@ app.post("/generate-result-5d", async (req, res) => {
       }
     }
 
-    console.log(`Period ${periodNumber} (${timer}): Draw ${result.drawNumber}, Winners: ${winnersCount}, Losers: ${losersCount}, Total Payouts: ${totalPayouts}`);
+  //  console.log(`Period ${periodNumber} (${timer}): Draw ${result.drawNumber}, Winners: ${winnersCount}, Losers: ${losersCount}, Total Payouts: ${totalPayouts}`);
 
     // Prepare final result
     const finalResult = {
@@ -547,7 +602,7 @@ app.post("/period-5d", async (req, res) => {
 });
 
 //=================== user bet history API===================
-app.get("/bet-history-5d", async (req, res) => {
+app.post("/bet-history-5d", async (req, res) => {
   const { userId, timer } = req.body;
 
   try {
@@ -569,8 +624,8 @@ app.get("/bet-history-5d", async (req, res) => {
   }
 });
 
-//===================result history API===================
-app.get("/result-history-5d", async (req, res) => {
+//=================== fetch result history API===================
+app.post("/result-history-5d", async (req, res) => {
   const { timer } = req.body;
 
   try {
@@ -592,8 +647,8 @@ app.get("/result-history-5d", async (req, res) => {
   }
 });
 
-//========= get latest result API =========
-app.get("/latest-result-5d", async (req, res) => {
+//========= Fetch latest result API =========
+app.post("/latest-result-5d", async (req, res) => {
   const { timer, periodNumber } = req.body;
   try {
     const [results] = await pool.query(
