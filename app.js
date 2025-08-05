@@ -77,6 +77,7 @@ app.use('/api/queries',require('./routes/queries' ));
 
 app.use("/api/rates", require("./routes/rates"));
 app.use("/api/5d", require("./routes/5D_game"))
+app.use("/api/trx",require("./routes/trx-game"))
 
 
 server.listen(PORT, () => {
