@@ -607,7 +607,7 @@ app.post("/generate-result-trx", async (req, res) => {
   }
 });
 
-//================= get latest result API ================
+//================= GET latest result API ================
 
 app.get("/latest-result-trx", async (req, res) => {
   const { timer, periodNumber } = req.query;
@@ -630,7 +630,7 @@ app.get("/latest-result-trx", async (req, res) => {
   }
 });
 
-// ================== HISTORY API =================
+// ================== GET RESULT HISTORY API =================
 
 app.get("/result-history-trx", async (req, res) => {
   try {
