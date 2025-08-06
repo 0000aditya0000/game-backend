@@ -1,16 +1,7 @@
 const axios = require("axios");
 const mysql = require('mysql2/promise');
 const { getIO } = require("./socket");
-
-
-const pool = mysql.createPool({
-  host: "localhost",
-  user: "root", // Replace with your MySQL username
-  password: "", // Replace with your MySQL password
-  database: "stake",
-});
-
-
+const pool = require("../config/pool"); // database connection
 
 
 const io = getIO();
@@ -45,8 +36,8 @@ Object.entries(durations).forEach(([duration, interval]) => {
 
           const lastPeriod = rows.length ? rows[0].period_number : 0;
           const nextPeriod = lastPeriod + 1;
-
-          await axios.post("http://localhost:5000/api/color/generate-result", {
+     
+          await axios.post(`${process.env.BASE_URL}/api/color/generate-result`, {
             periodNumber: nextPeriod,
             duration: duration,
           });
@@ -60,4 +51,6 @@ Object.entries(durations).forEach(([duration, interval]) => {
 
   }, 1000); // Still tick every 1s
 });
+
+
 

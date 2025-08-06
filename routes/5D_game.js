@@ -4,19 +4,14 @@ const bodyParser = require("body-parser");
 const cors = require("cors");
 const axios = require("axios");
 const { getIO } = require("../utils/socket");
+const pool = require("../config/pool")
 
 
 const app = express();
 app.use(bodyParser.json());
 app.use(cors());
 
-// Database pool
-const pool = mysql.createPool({
-  host: "localhost",
-  user: "root", // Replace with your MySQL username
-  password: "", // Replace with your MySQL password
-  database: "stake",
-});
+
 
 
 
@@ -56,7 +51,7 @@ Object.entries(timers5D).forEach(([timer, interval]) => {
           const lastPeriod = rows.length ? rows[0].period_number : 0;
           const nextPeriod = lastPeriod + 1;
 
-          await axios.post("http://localhost:5000/api/5d/generate-result-5d", {
+          await axios.post(`${process.env.BASE_URL}/api/5d/generate-result-5d`, {
             periodNumber: nextPeriod,
             timer: timer,
           });
