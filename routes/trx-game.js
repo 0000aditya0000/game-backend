@@ -5,16 +5,11 @@ const bodyParser = require("body-parser");
 const cors = require("cors");
 const axios = require("axios");
 const { getIO } = require("../utils/socket");
+const pool = require("../config/pool"); // database connection
 
 
 const app = express();
 
-const pool = mysql.createPool({
-  host: "localhost",
-  user: "root",
-  password: "",
-  database: "stake",
-});
 
 
 // ================== TRX Centralized Scheduler =================
@@ -53,7 +48,7 @@ Object.entries(timersTrx).forEach(([timer, interval]) => {
           const lastPeriod = rows.length ? rows[0].period_number : 0;
           const nextPeriod = lastPeriod + 1;
 
-          await axios.post("http://localhost:5000/api/trx/generate-result-trx", {
+          await axios.post(`${process.env.BASE_URL}/api/trx/generate-result-trx`, {
             periodNumber: nextPeriod,
             timer: timer,
           });
@@ -69,7 +64,7 @@ Object.entries(timersTrx).forEach(([timer, interval]) => {
 });
 
 
-// ================== 2.  HELPER FUNCTIONS =================
+// ==================   HELPER FUNCTIONS =================
 
 const validateTRXBet = (betType, betValue) => {
   const validBetTypes = ['color', 'number', 'size'];
