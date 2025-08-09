@@ -313,7 +313,7 @@ const generateStrategicTRXResult = async (periodNumber, timer, pool) => {
   }
 };
 
-// ==================  PLACE BET API =================
+// ================== 1.  PLACE BET API =================
 
 app.post("/place-bet-trx", async (req, res) => {
   try {
@@ -335,7 +335,7 @@ app.post("/place-bet-trx", async (req, res) => {
       });
     }
 
-    // Validate bet with new schema
+    // Validate bet 
     const validation = validateTRXBet(betType, betValue);
     if (!validation.valid) {
       return res.status(400).json({ 
@@ -351,20 +351,21 @@ app.post("/place-bet-trx", async (req, res) => {
         error: "Invalid bet amount" 
       });
     }
+    
+        //  Check if user has ANY pending bet
+        const [existingBet] = await pool.query(
+  `SELECT id FROM bets_trx 
+   WHERE user_id = ? AND status = 'pending'`,
+  [userId]
+          );
 
-    // Check betting time window
-    const interval = trxTimers[timer];
-    const now = Date.now();
-    const elapsedInCycle = now % interval;
-    const remainingTimeMs = interval - elapsedInCycle;
-    const bettingCutoff = timer === '1min' ? 5000 : (interval * 0.083);
+        if (existingBet.length > 0) {
+  return res.status(400).json({
+    success: false,
+    error: "You already have a pending bet. Please wait until it is settled."
+  });
+        }
 
-    if (remainingTimeMs <= bettingCutoff) {
-      return res.status(400).json({ 
-        success: false, 
-        error: "Betting period has ended. Please wait for next round." 
-      });
-    }
 
     // Check user wallet balance
     const [walletResult] = await pool.query(
@@ -442,7 +443,7 @@ app.post("/place-bet-trx", async (req, res) => {
   }
 });
 
-// ==================  GENERATE RESULT API =================
+// ================== 2. GENERATE RESULT API =================
 
 app.post("/generate-result-trx", async (req, res) => {
   try {
@@ -602,7 +603,7 @@ app.post("/generate-result-trx", async (req, res) => {
   }
 });
 
-//================= GET latest result API ================
+//================= 3. GET latest result API ================
 
 app.get("/latest-result-trx", async (req, res) => {
   const { timer, periodNumber } = req.query;
@@ -625,7 +626,7 @@ app.get("/latest-result-trx", async (req, res) => {
   }
 });
 
-// ================== GET RESULT HISTORY API =================
+// ================== 4. GET RESULT HISTORY API =================
 
 app.get("/result-history-trx", async (req, res) => {
   try {
@@ -675,6 +676,223 @@ app.get("/result-history-trx", async (req, res) => {
     });
   }
 });
+
+
+
+app.post("/period-trx", async (req, res) => {
+  const { mins } = req.body; // 'mins' means duration like '1min', '3min', etc.
+
+
+  try {
+    const [rows] = await pool.query(
+      "SELECT period_number FROM result_trx WHERE timer = ? ORDER BY period_number DESC LIMIT 1",
+      [mins]
+    );
+
+    let newPeriodNumber;
+
+    if (rows.length > 0) {
+      // Get the last period_number and increment it
+      const lastPeriod = parseInt(rows[0].period_number);
+      newPeriodNumber = lastPeriod + 1;
+    } else {
+      // If no previous period exists for this duration
+      newPeriodNumber = 1;
+    }
+
+    res.json({ period_number: newPeriodNumber });
+  } catch (error) {
+    console.error(" MySQL/Server error:", error);
+    res.status(500).json({ error: "Server error", details: error.message });
+  }
+});
+
+
+//=================== user bet history API===================
+app.get("/bet-history-trx", async (req, res) => {
+  const { userId, timer } = req.query;
+
+  try {
+    const [bets] = await pool.query(
+      `SELECT * FROM bets_trx 
+       WHERE user_id = ? AND timer = ? 
+       ORDER BY created_at DESC`,
+      [userId, timer]
+    );
+
+    if (bets.length === 0) {
+      return res.status(404).json({ success: false, message: "No bets found for this user and timer" });
+    }
+
+    res.json({ success: true, bets });
+  } catch (error) {
+    console.error("Error fetching bet history:", error);
+    res.status(500).json({ success: false, message: "Error fetching bet history", error: error.message });
+  }
+});
+
+
+//============================= trx-Game all bets of a user [Total win/loss] API =========================
+app.get("/user-stats-trx", async (req, res) => {
+  const { userId, timer } = req.query;
+
+  if (!userId) {
+    return res.status(400).json({ error: "User ID is required." });
+  }
+
+  try {
+    let query = `SELECT * FROM bets_trx WHERE user_id = ?`;
+    const params = [userId];
+
+    if (timer) {
+      query += ` AND timer = ?`;
+      params.push(timer);
+    }
+
+    const [bets] = await pool.query(query, params);
+
+    let totalWinAmount = 0;
+    let totalLossAmount = 0;
+
+    bets.forEach(bet => {
+      if (bet.status === "won") {
+        totalWinAmount += parseFloat(bet.winnings || 0);
+      } else if (bet.status === "lost") {
+        totalLossAmount += parseFloat(bet.amount || 0);
+      }
+    });
+
+    res.json({
+      totalBets: bets.length,
+      totalWinAmount,
+      totalLossAmount,
+      bets
+    });
+  } catch (error) {
+    console.error("Error fetching user stats:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+
+
+// ======== Get TRX Game Report for a specific period and timer ========
+app.get("/report-trx", async (req, res) => {
+  try {
+    const { periodNumber, timer } = req.query;
+
+    // Validate input
+    if (!periodNumber || !timer) {
+      return res.status(400).json({
+        success: false,
+        message: "Period number and timer are required"
+      });
+    }
+
+    // Get result for this period
+    const [resultRows] = await pool.query(
+      `SELECT * FROM result_trx WHERE period_number = ? AND timer = ?`,
+      [periodNumber, timer]
+    );
+
+    if (resultRows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "No result found for this period"
+      });
+    }
+
+    const result = resultRows[0];
+
+    // Get all bets for this period
+    const [bets] = await pool.query(
+      `SELECT 
+        bet_type,
+        bet_value,
+        amount,
+        user_id,
+        COUNT(*) AS bet_count,
+        SUM(amount) AS total_amount,
+        COUNT(DISTINCT user_id) AS unique_users
+       FROM bets_trx 
+       WHERE period_number = ? AND timer = ?
+       GROUP BY bet_type, bet_value, user_id`,
+      [periodNumber, timer]
+    );
+
+    // Initialize stats
+    const colorStats = {
+      red: { total_bets: 0, total_amount: 0, unique_users: new Set() },
+      green: { total_bets: 0, total_amount: 0, unique_users: new Set() },
+      violet: { total_bets: 0, total_amount: 0, unique_users: new Set() }
+    };
+
+    const sizeStats = {
+      small: { total_bets: 0, total_amount: 0, unique_users: new Set() },
+      big: { total_bets: 0, total_amount: 0, unique_users: new Set() }
+    };
+
+    let totalBets = 0;
+    let totalAmount = 0;
+    const allUniqueUsers = new Set();
+
+    // Process bets
+    bets.forEach(bet => {
+      totalBets += bet.bet_count;
+      totalAmount += parseFloat(bet.total_amount);
+      allUniqueUsers.add(bet.user_id);
+
+      if (bet.bet_type === "color" && colorStats[bet.bet_value]) {
+        colorStats[bet.bet_value].total_bets += bet.bet_count;
+        colorStats[bet.bet_value].total_amount += parseFloat(bet.total_amount);
+        colorStats[bet.bet_value].unique_users.add(bet.user_id);
+      }
+
+      if (bet.bet_type === "size" && sizeStats[bet.bet_value]) {
+        sizeStats[bet.bet_value].total_bets += bet.bet_count;
+        sizeStats[bet.bet_value].total_amount += parseFloat(bet.total_amount);
+        sizeStats[bet.bet_value].unique_users.add(bet.user_id);
+      }
+    });
+
+    // Convert Sets to counts
+    Object.keys(colorStats).forEach(color => {
+      colorStats[color].unique_users = colorStats[color].unique_users.size;
+    });
+    Object.keys(sizeStats).forEach(size => {
+      sizeStats[size].unique_users = sizeStats[size].unique_users.size;
+    });
+
+    // Response
+    res.json({
+      success: true,
+      period_number: periodNumber,
+      timer,
+      result: {
+        number: result.result_number,
+        color: result.result_color,
+        size: result.result_size,
+        hash: result.hash_value
+      },
+      color_bets: colorStats,
+      size_bets: sizeStats,
+      summary: {
+        total_bets: totalBets,
+        total_amount: totalAmount,
+        total_unique_users: allUniqueUsers.size
+      }
+    });
+
+  } catch (error) {
+    console.error("Error fetching TRX betting stats:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error fetching TRX betting statistics",
+      error: error.message
+    });
+  }
+});
+
 
 
 
