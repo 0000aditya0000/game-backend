@@ -13,14 +13,14 @@ const pool = require("../config/pool");
 const app = express();
 app.use(bodyParser.json());
 app.use(cors());
+// Database pool
+const pool = mysql.createPool({
+  host: "localhost",
+  user: "lucifer", // Replace with your MySQL username
+  password: "Welcome@noida2024", // Replace with your MySQL password
+  database: "stake",
+});
 
-// // Database pool
-// const pool = mysql.createPool({
-//   host: "localhost",
-//   user: "root", // Replace with your MySQL username
-//   password: "", // Replace with your MySQL password
-//   database: "stake",
-// });
 
 function getColor(number) {
   if ([1, 3, 7, 9].includes(number)) return "red";
