@@ -4,19 +4,13 @@ const bodyParser = require("body-parser");
 const cors = require("cors");
 const axios = require("axios");
 const { getIO } = require("../utils/socket");
+const pool = require("../config/pool")
 
 
 const app = express();
 app.use(bodyParser.json());
 app.use(cors());
 
-// Database pool
-const pool = mysql.createPool({
-  host: "localhost",
-  user: "lucifer", // Replace with your MySQL username
-  password: "Welcome@noida2024", // Replace with your MySQL password
-  database: "stake",
-});
 
 
 
@@ -56,7 +50,8 @@ Object.entries(timers5D).forEach(([timer, interval]) => {
           const lastPeriod = rows.length ? rows[0].period_number : 0;
           const nextPeriod = lastPeriod + 1;
 
-          await axios.post("https://api.rollix777.com/api/5d/generate-result-5d", {
+
+          await axios.post(`${process.env.BASE_URL}/api/5d/generate-result-5d`, {
             periodNumber: nextPeriod,
             timer: timer,
           });
@@ -152,7 +147,7 @@ const generateStrategic5DResult = async (periodNumber, timer, pool) => {
     // Generate strategic digit for each position
     for (const position of positions) {
       const positionBetsData = positionBets.filter(bet => bet.position === position);
-      
+
       if (positionBetsData.length === 0) {
         // No bets for this position, generate random digit
         resultDigits.push(Math.floor(Math.random() * 10));
@@ -177,7 +172,7 @@ const generateStrategic5DResult = async (periodNumber, timer, pool) => {
         if (amount > highestAmount) {
           highestAmount = amount;
           highestBetType = betType;
-          
+
           // If it's a number bet, get the specific number
           if (betType === 'number') {
             const numberBet = positionBetsData.find(bet => bet.bet_type === 'number' && parseFloat(bet.total_amount) === amount);
@@ -255,7 +250,7 @@ const generateStrategic5DResult = async (periodNumber, timer, pool) => {
           const targetSum = Math.floor(Math.random() * (targetSumRange.max - targetSumRange.min + 1)) + targetSumRange.min;
           const currentSumWithoutE = A + B + C + D;
           const newE = Math.max(0, Math.min(9, targetSum - currentSumWithoutE));
-          
+
           if (newE >= 0 && newE <= 9) {
             resultDigits[4] = newE;
             calculatedSum = currentSumWithoutE + newE;
@@ -285,8 +280,8 @@ const generateStrategic5DResult = async (periodNumber, timer, pool) => {
     const finalSum = resultDigits.reduce((sum, digit) => sum + digit, 0);
     const drawNumber = resultDigits.join('');
 
-   // console.log(`Strategic Result Generated: ${drawNumber}, Sum: ${finalSum}`);
-   // console.log(`Position strategies applied for Period ${periodNumber} (${timer})`);
+    // console.log(`Strategic Result Generated: ${drawNumber}, Sum: ${finalSum}`);
+    // console.log(`Position strategies applied for Period ${periodNumber} (${timer})`);
 
     return {
       A: resultDigits[0],
@@ -308,7 +303,7 @@ const generateStrategic5DResult = async (periodNumber, timer, pool) => {
 
 const check5DWinner = (bet, result) => {
   const { position, bet_type, bet_value } = bet;
-  
+
   if (position === 'SUM') {
     const sum = result.SUM;
     switch (bet_type) {
@@ -321,7 +316,7 @@ const check5DWinner = (bet, result) => {
   } else {
     // Position bets (A, B, C, D, E)
     const positionValue = result[position];
-    
+
     switch (bet_type) {
       case 'number': return parseInt(bet_value) === positionValue;
       case 'low': return positionValue >= 0 && positionValue <= 4;
@@ -340,34 +335,34 @@ app.post("/place-bet-5d", async (req, res) => {
 
     // Validate required fields
     if (!userId || !position || !betType || !amount || !periodNumber || !timer) {
-      return res.status(400).json({ 
-        success: false, 
-        error: "Missing required fields: userId, position, betType, amount, periodNumber, timer" 
+      return res.status(400).json({
+        success: false,
+        error: "Missing required fields: userId, position, betType, amount, periodNumber, timer"
       });
     }
 
     // Validate timer
     if (!validateTimer(timer)) {
-      return res.status(400).json({ 
-        success: false, 
-        error: "Invalid timer. Must be 1min, 3min, 5min, or 10min" 
+      return res.status(400).json({
+        success: false,
+        error: "Invalid timer. Must be 1min, 3min, 5min, or 10min"
       });
     }
 
     // Validate bet
     const validation = validate5DBet(position, betType, betValue);
     if (!validation.valid) {
-      return res.status(400).json({ 
-        success: false, 
-        error: validation.error 
+      return res.status(400).json({
+        success: false,
+        error: validation.error
       });
     }
 
     // Validate amount
     if (isNaN(amount) || amount <= 0) {
-      return res.status(400).json({ 
-        success: false, 
-        error: "Invalid bet amount" 
+      return res.status(400).json({
+        success: false,
+        error: "Invalid bet amount"
       });
     }
 
@@ -380,17 +375,17 @@ app.post("/place-bet-5d", async (req, res) => {
     );
 
     if (walletResult.length === 0) {
-      return res.status(404).json({ 
-        success: false, 
-        error: "User wallet not found" 
+      return res.status(404).json({
+        success: false,
+        error: "User wallet not found"
       });
     }
 
     const userBalance = parseFloat(walletResult[0].balance);
     if (userBalance < amount) {
-      return res.status(400).json({ 
-        success: false, 
-        error: "Insufficient balance" 
+      return res.status(400).json({
+        success: false,
+        error: "Insufficient balance"
       });
     }
 
@@ -401,9 +396,9 @@ app.post("/place-bet-5d", async (req, res) => {
     );
 
     if (periodCheck.length > 0) {
-      return res.status(400).json({ 
-        success: false, 
-        error: "Betting period has ended for this timer" 
+      return res.status(400).json({
+        success: false,
+        error: "Betting period has ended for this timer"
       });
     }
 
@@ -439,10 +434,10 @@ app.post("/place-bet-5d", async (req, res) => {
 
   } catch (error) {
     console.error("Error in place-bet-5dgame:", error);
-    res.status(500).json({ 
-      success: false, 
-      message: "Error placing bet", 
-      error: error.message 
+    res.status(500).json({
+      success: false,
+      message: "Error placing bet",
+      error: error.message
     });
   }
 });
@@ -460,9 +455,9 @@ app.post("/generate-result-5d", async (req, res) => {
 
     // Validate timer
     if (!validateTimer(timer)) {
-      return res.status(400).json({ 
-        success: false, 
-        error: "Invalid timer. Must be 1min, 3min, 5min, or 10min" 
+      return res.status(400).json({
+        success: false,
+        error: "Invalid timer. Must be 1min, 3min, 5min, or 10min"
       });
     }
 
@@ -473,9 +468,9 @@ app.post("/generate-result-5d", async (req, res) => {
     );
 
     if (existingResult.length > 0) {
-      return res.status(400).json({ 
-        success: false, 
-        error: "Result already generated for this period and timer" 
+      return res.status(400).json({
+        success: false,
+        error: "Result already generated for this period and timer"
       });
     }
 
@@ -533,7 +528,7 @@ app.post("/generate-result-5d", async (req, res) => {
       }
     }
 
-  //  console.log(`Period ${periodNumber} (${timer}): Draw ${result.drawNumber}, Winners: ${winnersCount}, Losers: ${losersCount}, Total Payouts: ${totalPayouts}`);
+    //  console.log(`Period ${periodNumber} (${timer}): Draw ${result.drawNumber}, Winners: ${winnersCount}, Losers: ${losersCount}, Total Payouts: ${totalPayouts}`);
 
     // Prepare final result
     const finalResult = {
@@ -565,10 +560,10 @@ app.post("/generate-result-5d", async (req, res) => {
 
   } catch (error) {
     console.error("Error in generate-result-5d-game:", error);
-    res.status(500).json({ 
-      success: false, 
-      message: "Error generating 5D game result", 
-      error: error.message 
+    res.status(500).json({
+      success: false,
+      message: "Error generating 5D game result",
+      error: error.message
     });
   }
 });
@@ -666,9 +661,183 @@ app.post("/latest-result-5d", async (req, res) => {
   } catch (error) {
     console.error("Error fetching latest result:", error);
     res.status(500).json({ success: false, message: "Error fetching latest result", error: error.message });
-  } });
+  }
+});
 
- 
+//============================= 5D-Game all bets of a user [Total win/loss] API =========================
+app.get("/user-stats-5d", async (req, res) => {
+  const { userId, timer } = req.query;
+
+  if (!userId) {
+    return res.status(400).json({ error: "User ID is required." });
+  }
+
+  try {
+    let query = `SELECT * FROM bets_5d WHERE user_id = ?`;
+    const params = [userId];
+
+    if (timer) {
+      query += ` AND timer = ?`;
+      params.push(timer);
+    }
+
+    const [bets] = await pool.query(query, params);
+
+    let totalWinAmount = 0;
+    let totalLossAmount = 0;
+
+    bets.forEach(bet => {
+      if (bet.status === "won") {
+        totalWinAmount += parseFloat(bet.winnings || 0);
+      } else if (bet.status === "lost") {
+        totalLossAmount += parseFloat(bet.amount || 0);
+      }
+    });
+
+    res.json({
+      totalBets: bets.length,
+      totalWinAmount,
+      totalLossAmount,
+      bets
+    });
+  } catch (error) {
+    console.error("Error fetching user stats:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+//======== Get total bet report for a specific perioda and timer ========
+app.get("/report-5d/", async (req, res) => {
+  try {
+    const { periodNumber, timer } = req.query;
+
+    // Validate input
+    if (!periodNumber || !timer) {
+      return res.status(400).json({
+        success: false,
+        message: "Period number and timer are required"
+      });
+    }
+
+    // Get result for this period
+    const [resultRows] = await pool.query(
+      `SELECT * FROM result_5d WHERE period_number = ? AND timer = ?`,
+      [periodNumber, timer]
+    );
+
+    if (resultRows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "No result found for this period"
+      });
+    }
+
+    const result = resultRows[0];
+
+    // Get all bets for this period
+    const [bets] = await pool.query(
+      `SELECT 
+        position,
+        bet_type,
+        bet_value,
+        amount,
+        user_id,
+        COUNT(*) as bet_count,
+        SUM(amount) as total_amount,
+        COUNT(DISTINCT user_id) as unique_users
+       FROM bets_5d 
+       WHERE period_number = ? AND timer = ?
+       GROUP BY position, bet_type, bet_value`,
+      [periodNumber, timer]
+    );
+
+    // Initialize bet statistics
+    const positionStats = {
+      A: { total_bets: 0, total_amount: 0, unique_users: new Set() },
+      B: { total_bets: 0, total_amount: 0, unique_users: new Set() },
+      C: { total_bets: 0, total_amount: 0, unique_users: new Set() },
+      D: { total_bets: 0, total_amount: 0, unique_users: new Set() },
+      E: { total_bets: 0, total_amount: 0, unique_users: new Set() }
+    };
+
+    const sizeStats = {
+      low: { total_bets: 0, total_amount: 0, unique_users: new Set() },
+      high: { total_bets: 0, total_amount: 0, unique_users: new Set() }
+    };
+
+    let totalBets = 0;
+    let totalAmount = 0;
+    const allUniqueUsers = new Set();
+
+    // Process bets
+    bets.forEach(bet => {
+      totalBets += bet.bet_count;
+      totalAmount += parseFloat(bet.total_amount);
+      allUniqueUsers.add(bet.user_id);
+
+      if (bet.position in positionStats) {
+        positionStats[bet.position].total_bets += bet.bet_count;
+        positionStats[bet.position].total_amount += parseFloat(bet.total_amount);
+        positionStats[bet.position].unique_users.add(bet.user_id);
+      }
+
+      if (bet.bet_type === 'low' || bet.bet_type === 'high') {
+        sizeStats[bet.bet_type].total_bets += bet.bet_count;
+        sizeStats[bet.bet_type].total_amount += parseFloat(bet.total_amount);
+        sizeStats[bet.bet_type].unique_users.add(bet.user_id);
+      }
+    });
+
+    // Convert Sets to counts for the response
+    Object.keys(positionStats).forEach(pos => {
+      positionStats[pos].unique_users = positionStats[pos].unique_users.size;
+    });
+    Object.keys(sizeStats).forEach(size => {
+      sizeStats[size].unique_users = sizeStats[size].unique_users.size;
+    });
+
+    const response = {
+      success: true,
+      period_number: periodNumber,
+      timer: timer,
+      result: {
+        draw_number: result.draw_number,
+        digits: {
+          A: result.digit_a,
+          B: result.digit_b,
+          C: result.digit_c,
+          D: result.digit_d,
+          E: result.digit_e
+        },
+        sum: result.sum_total
+      },
+      position_bets: positionStats,
+      size_bets: sizeStats,
+      summary: {
+        total_bets: totalBets,
+        total_amount: totalAmount,
+        total_unique_users: allUniqueUsers.size
+      }
+    };
+
+    res.json(response);
+
+  } catch (error) {
+    console.error("Error fetching betting stats:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error fetching betting statistics",
+      error: error.message
+    });
+  }
+});
+
+
+
+
+
+
+
 
 
 

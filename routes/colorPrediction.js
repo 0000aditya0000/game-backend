@@ -7,12 +7,12 @@ const axios = require("axios");
 const { processWeeklyLossCashback } = require("../utils/weeklyCashback");
 const { updateGameplayTracking } = require("../utils/gameplay");
 const { getIO } = require("../utils/socket");
+const pool = require("../config/pool"); 
 
 
 const app = express();
 app.use(bodyParser.json());
 app.use(cors());
-
 // Database pool
 const pool = mysql.createPool({
   host: "localhost",
@@ -20,6 +20,7 @@ const pool = mysql.createPool({
   password: "Welcome@noida2024", // Replace with your MySQL password
   database: "stake",
 });
+
 
 function getColor(number) {
   if ([1, 3, 7, 9].includes(number)) return "red";
