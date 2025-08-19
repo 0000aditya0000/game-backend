@@ -5,12 +5,6 @@ const authenticateToken = require('../middleware/authenticateToken');
 
 
 
-
-
-
-
-
-
 //========= Admin: Get all queries with pagination and filters ============
 router.get('/admin/all', async (req, res) => {
     try {
@@ -97,11 +91,18 @@ router.get('/admin/all', async (req, res) => {
                         });
                     }
 
-                    // Step 3: Group comments by query_id
+                    // Step 3: Group comments by query_id and transform response
                     const commentMap = {};
                     comments.forEach(c => {
+                        const formattedComment = {
+                            id: c.id,
+                            comment: c.comment,
+                            role: c.admin_comment === 1 ? "admin" : "user", // convert role
+                            created_at: c.created_at
+                        };
+
                         if (!commentMap[c.query_id]) commentMap[c.query_id] = [];
-                        commentMap[c.query_id].push(c);
+                        commentMap[c.query_id].push(formattedComment);
                     });
 
                     // Step 4: Attach comments to queries
@@ -134,66 +135,196 @@ router.get('/admin/all', async (req, res) => {
 });
 
 
-// ================= Add comment to query : by admin ===============
-router.post('/:queryId/comment', async (req, res) => {
-    try {
-        const { queryId } = req.params;
-          console.log("Body received:", req.body); // Debug line
-        const { comment, is_admin } = req.body;
+
+
+
+
+// //========= Admin: Get all queries with pagination and filters ============
+// router.get('/admin/all', async (req, res) => {
+//     try {
+//         const page = parseInt(req.query.page) || 1;
+//         const limit = parseInt(req.query.limit) || 20;
+//         const status = req.query.status;
+//         const type = req.query.type;
+//         const offset = (page - 1) * limit;
+
+//         let whereClause = '1=1';
+//         const queryParams = [];
+
+//         if (status) {
+//             whereClause += ' AND status = ?';
+//             queryParams.push(status);
+//         }
+
+//         if (type) {
+//             whereClause += ' AND query_type = ?';
+//             queryParams.push(type);
+//         }
+
+//         // Get total count
+//         const countQuery = `SELECT COUNT(*) as total FROM user_queries WHERE ${whereClause}`;
+
+//         connection.query(countQuery, queryParams, (countErr, countResult) => {
+//             if (countErr) {
+//                 return res.status(500).json({
+//                     success: false,
+//                     message: "Error counting queries"
+//                 });
+//             }
+
+//             const totalQueries = countResult[0].total;
+//             const totalPages = Math.ceil(totalQueries / limit);
+
+//             // Get queries with comment count
+//             const query = `
+//                 SELECT q.*, COUNT(c.id) as comment_count
+//                 FROM user_queries q
+//                 LEFT JOIN query_comments c ON q.id = c.query_id
+//                 WHERE ${whereClause}
+//                 GROUP BY q.id
+//                 ORDER BY q.created_at DESC
+//                 LIMIT ? OFFSET ?
+//             `;
+
+//             connection.query(query, [...queryParams, limit, offset], (err, queries) => {
+//                 if (err) {
+//                     return res.status(500).json({
+//                         success: false,
+//                         message: "Error fetching queries"
+//                     });
+//                 }
+
+//                 // Step 1: Extract all query IDs
+//                 const queryIds = queries.map(q => q.id);
+//                 if (queryIds.length === 0) {
+//                     return res.json({
+//                         success: true,
+//                         message: "Queries retrieved successfully",
+//                         pagination: {
+//                             current_page: page,
+//                             total_pages: totalPages,
+//                             total_items: totalQueries,
+//                             items_per_page: limit
+//                         },
+//                         data: []
+//                     });
+//                 }
+
+//                 // Step 2: Get all comments for these query IDs
+//                 const commentQuery = `
+//                     SELECT * FROM query_comments 
+//                     WHERE query_id IN (${queryIds.map(() => '?').join(',')})
+//                     ORDER BY created_at ASC
+//                 `;
+
+//                 connection.query(commentQuery, queryIds, (commentErr, comments) => {
+//                     if (commentErr) {
+//                         return res.status(500).json({
+//                             success: false,
+//                             message: "Error fetching comments"
+//                         });
+//                     }
+
+//                     // Step 3: Group comments by query_id
+//                     const commentMap = {};
+//                     comments.forEach(c => {
+//                         if (!commentMap[c.query_id]) commentMap[c.query_id] = [];
+//                         commentMap[c.query_id].push(c);
+//                     });
+
+//                     // Step 4: Attach comments to queries
+//                     const finalData = queries.map(q => ({
+//                         ...q,
+//                         comments: commentMap[q.id] || []
+//                     }));
+
+//                     res.json({
+//                         success: true,
+//                         message: "Queries retrieved successfully",
+//                         pagination: {
+//                             current_page: page,
+//                             total_pages: totalPages,
+//                             total_items: totalQueries,
+//                             items_per_page: limit
+//                         },
+//                         data: finalData
+//                     });
+//                 });
+//             });
+//         });
+//     } catch (error) {
+//         console.error('Server error:', error);
+//         res.status(500).json({
+//             success: false,
+//             message: "Internal server error"
+//         });
+//     }
+// });
+
+
+// // ================= Add comment to query : by admin ===============
+// router.post('/:queryId/comment', async (req, res) => {
+//     try {
+//         const { queryId } = req.params;
+//           console.log("Body received:", req.body); // Debug line
+//         const { comment, is_admin } = req.body;
    
-    if (!comment || comment.trim() === "") {
-    return res.status(400).json({
-        success: false,
-        message: "Comment is required"
-    });
-}
+//     if (!comment || comment.trim() === "") {
+//     return res.status(400).json({
+//         success: false,
+//         message: "Comment is required"
+//     });
+// }
 
-        // First check if query exists
-        const checkQuery = "SELECT id FROM user_queries WHERE id = ?";
-        connection.query(checkQuery, [queryId], (checkErr, checkResults) => {
-            if (checkErr || checkResults.length === 0) {
-                return res.status(404).json({
-                    success: false,
-                    message: "Query not found"
-                });
-            }
+//         // First check if query exists
+//         const checkQuery = "SELECT id FROM user_queries WHERE id = ?";
+//         connection.query(checkQuery, [queryId], (checkErr, checkResults) => {
+//             if (checkErr || checkResults.length === 0) {
+//                 return res.status(404).json({
+//                     success: false,
+//                     message: "Query not found"
+//                 });
+//             }
 
-            // Add comment
-            const insertQuery = `
-                INSERT INTO query_comments 
-                (query_id, comment, admin_comment) 
-                VALUES (?, ?, ?)
-            `;
+//             // Add comment
+//             const insertQuery = `
+//                 INSERT INTO query_comments 
+//                 (query_id, comment, admin_comment) 
+//                 VALUES (?, ?, ?)
+//             `;
 
-            connection.query(insertQuery, [queryId, comment, !!is_admin], (err, results) => {
-                if (err) {
-                    return res.status(500).json({
-                        success: false,
-                        message: "Error adding comment"
-                    });
-                }
+//             connection.query(insertQuery, [queryId, comment, !!is_admin], (err, results) => {
+//                 if (err) {
+//                     return res.status(500).json({
+//                         success: false,
+//                         message: "Error adding comment"
+//                     });
+//                 }
 
-                res.json({
-                    success: true,
-                    message: "Comment added successfully",
-                    data: {
-                        id: results.insertId,
-                        query_id: queryId,
-                        comment,
-                        admin_comment: !!is_admin,
-                        created_at: new Date()
-                    }
-                });
-            });
-        });
-    } catch (error) {
-        console.error('Server error:', error);
-        res.status(500).json({
-            success: false,
-            message: "Internal server error"
-        });
-    }
-});
+//                 res.json({
+//                     success: true,
+//                     message: "Comment added successfully",
+//                     data: {
+//                         id: results.insertId,
+//                         query_id: queryId,
+//                         comment,
+//                         admin_comment: !!is_admin,
+//                         created_at: new Date()
+//                     }
+//                 });
+//             });
+//         });
+//     } catch (error) {
+//         console.error('Server error:', error);
+//         res.status(500).json({
+//             success: false,
+//             message: "Internal server error"
+//         });
+//     }
+// });
+
+
+
 
 //===============  Update query status : by admin ===============
 router.put('/:queryId/status', async (req, res) => {
@@ -253,7 +384,7 @@ router.put('/:queryId/status', async (req, res) => {
 
 //============================================================================
 // This will ensure that all below routes in this file require authentication
-              router.use(authenticateToken);
+           //   router.use(authenticateToken);
 //=============================================================================
 
 
@@ -267,7 +398,7 @@ function generateQueryId() {
 // ======================= Submit a new query ==========
 router.post('/submit', async (req, res) => {
     try {
-   const { user_id, name, email, phone, telegram_id, query_type, message } = req.body;
+   const { user_id, name, email, phone, telegram_id, query_type, message, image } = req.body;
 
 
         // Validate required fields
@@ -292,13 +423,13 @@ router.post('/submit', async (req, res) => {
 
       const query = `
     INSERT INTO user_queries 
-    (id, user_id, name, email, phone, telegram_id, query_type, message) 
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    (id, user_id, name, email, phone, telegram_id, query_type, message,image) 
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
         connection.query(
             query,
-            [queryId, user_id, name, email, phone, telegram_id, query_type, message],
+            [queryId, user_id, name, email, phone, telegram_id, query_type, message, image || null],
             (err, results) => {
                 if (err) {
                     console.error('Error submitting query:', err);
@@ -314,6 +445,7 @@ router.post('/submit', async (req, res) => {
                     data: {
                         query_id: queryId,
                         status: 'pending',
+                        image: image || null,
                         submitted_at: new Date()
                     }
                 });
@@ -328,61 +460,144 @@ router.post('/submit', async (req, res) => {
     }
 });
 
-//======================= Get query status and comments by ID =========
-router.get('/:queryId', async (req, res) => {
-    try {
-        const { queryId } = req.params;
 
-        const queryDetails = `
-            SELECT q.*, 
-                   GROUP_CONCAT(
-                       JSON_OBJECT(
-                           'id', c.id,
-                           'comment', c.comment,
-                           'admin_comment', c.admin_comment,
-                           'created_at', c.created_at
-                       )
-                   ) as comments
-            FROM user_queries q
-            LEFT JOIN query_comments c ON q.id = c.query_id
-            WHERE q.id = ?
-            GROUP BY q.id
-        `;
 
-        connection.query(queryDetails, [queryId], (err, results) => {
-            if (err) {
-                console.error('Database error:', err);
-                return res.status(500).json({
-                    success: false,
-                    message: "Error fetching query details"
-                });
-            }
+// //======================= Get query status and comments by ID =========
+// router.get('/:queryId', async (req, res) => {
+//     try {
+//         const { queryId } = req.params;
 
-            if (results.length === 0) {
-                return res.status(404).json({
-                    success: false,
-                    message: "Query not found"
-                });
-            }
+//         const queryDetails = `
+//             SELECT q.*, 
+//                    GROUP_CONCAT(
+//                        JSON_OBJECT(
+//                            'id', c.id,
+//                            'comment', c.comment,
+//                            'admin_comment', c.admin_comment,
+//                            'created_at', c.created_at
+//                        )
+//                    ) as comments
+//             FROM user_queries q
+//             LEFT JOIN query_comments c ON q.id = c.query_id
+//             WHERE q.id = ?
+//             GROUP BY q.id
+//         `;
 
-            const query = results[0];
-            query.comments = query.comments ? JSON.parse(`[${query.comments}]`) : [];
+//         connection.query(queryDetails, [queryId], (err, results) => {
+//             if (err) {
+//                 console.error('Database error:', err);
+//                 return res.status(500).json({
+//                     success: false,
+//                     message: "Error fetching query details"
+//                 });
+//             }
 
-            res.json({
-                success: true,
-                data: query
-            });
-        });
-    } catch (error) {
-        console.error('Server error:', error);
-        res.status(500).json({
-            success: false,
-            message: "Internal server error"
-        });
-    }
-});
+//             if (results.length === 0) {
+//                 return res.status(404).json({
+//                     success: false,
+//                     message: "Query not found"
+//                 });
+//             }
+
+//             const query = results[0];
+//             query.comments = query.comments ? JSON.parse(`[${query.comments}]`) : [];
+
+//             res.json({
+//                 success: true,
+//                 data: query
+//             });
+//         });
+//     } catch (error) {
+//         console.error('Server error:', error);
+//         res.status(500).json({
+//             success: false,
+//             message: "Internal server error"
+//         });
+//     }
+// });
 
 // ============= Get all queries by user_id ==================
+// router.get('/user/:userId', async (req, res) => {
+//     try {
+//         const { userId } = req.params;
+
+//         // Step 1: Fetch all user queries with comment count
+//         const query = `
+//             SELECT q.*, 
+//                    COUNT(c.id) as comment_count
+//             FROM user_queries q
+//             LEFT JOIN query_comments c ON q.id = c.query_id
+//             WHERE q.user_id = ?
+//             GROUP BY q.id
+//             ORDER BY q.created_at DESC
+//         `;
+
+//         connection.query(query, [userId], (err, queries) => {
+//             if (err) {
+//                 console.error('Database error:', err);
+//                 return res.status(500).json({
+//                     success: false,
+//                     message: "Error fetching user queries"
+//                 });
+//             }
+
+//             // Step 2: If no queries, return early
+//             const queryIds = queries.map(q => q.id);
+//             if (queryIds.length === 0) {
+//                 return res.json({
+//                     success: true,
+//                     data: []
+//                 });
+//             }
+
+//             // Step 3: Fetch all comments for those queries
+//             const commentQuery = `
+//                 SELECT * FROM query_comments 
+//                 WHERE query_id IN (${queryIds.map(() => '?').join(',')})
+//                 ORDER BY created_at ASC
+//             `;
+
+//             connection.query(commentQuery, queryIds, (commentErr, comments) => {
+//                 if (commentErr) {
+//                     console.error('Comment fetch error:', commentErr);
+//                     return res.status(500).json({
+//                         success: false,
+//                         message: "Error fetching comments"
+//                     });
+//                 }
+
+//                 // Step 4: Group comments by query_id
+//                 const commentMap = {};
+//                 comments.forEach(c => {
+//                     if (!commentMap[c.query_id]) commentMap[c.query_id] = [];
+//                     commentMap[c.query_id].push(c);
+//                 });
+
+//                 // Step 5: Attach comments to corresponding queries
+//                 const finalData = queries.map(q => ({
+//                     ...q,
+//                     comments: commentMap[q.id] || []
+//                 }));
+
+//                 res.json({
+//                     success: true,
+//                     data: finalData
+//                 });
+//             });
+//         });
+//     } catch (error) {
+//         console.error('Server error:', error);
+//         res.status(500).json({
+//             success: false,
+//             message: "Internal server error"
+//         });
+//     }
+// });
+
+
+
+
+// ============= Get all queries by user_id UPDATED ==================
 router.get('/user/:userId', async (req, res) => {
     try {
         const { userId } = req.params;
@@ -418,7 +633,8 @@ router.get('/user/:userId', async (req, res) => {
 
             // Step 3: Fetch all comments for those queries
             const commentQuery = `
-                SELECT * FROM query_comments 
+                SELECT id, query_id, comment, admin_comment, created_at
+                FROM query_comments 
                 WHERE query_id IN (${queryIds.map(() => '?').join(',')})
                 ORDER BY created_at ASC
             `;
@@ -432,14 +648,23 @@ router.get('/user/:userId', async (req, res) => {
                     });
                 }
 
-                // Step 4: Group comments by query_id
+                // Step 4: Group comments by query_id 
                 const commentMap = {};
                 comments.forEach(c => {
                     if (!commentMap[c.query_id]) commentMap[c.query_id] = [];
-                    commentMap[c.query_id].push(c);
+                    
+                    // Format comment with role API
+                    const formattedComment = {
+                        id: c.id,
+                        comment: c.comment,
+                        role: c.admin_comment ? "admin" : "user",
+                        created_at: c.created_at
+                    };
+                    
+                    commentMap[c.query_id].push(formattedComment);
                 });
 
-                // Step 5: Attach comments to corresponding queries
+                // Step 5: Attach formatted comments to corresponding queries
                 const finalData = queries.map(q => ({
                     ...q,
                     comments: commentMap[q.id] || []
@@ -459,6 +684,202 @@ router.get('/user/:userId', async (req, res) => {
         });
     }
 });
+
+
+
+
+
+
+
+// ================================================
+
+// // ================= Add comment to query : user or admin ===============
+// router.post('/:queryId/comment', async (req, res) => {
+//     try {
+//         const { queryId } = req.params;
+//         const { comment, is_admin, parent_comment_id } = req.body;
+
+//         if (!comment || comment.trim() === "") {
+//             return res.status(400).json({ success: false, message: "Comment is required" });
+//         }
+
+//         // Check if query exists
+//         const checkQuery = "SELECT id FROM user_queries WHERE id = ?";
+//         connection.query(checkQuery, [queryId], (checkErr, checkResults) => {
+//             if (checkErr || checkResults.length === 0) {
+//                 return res.status(404).json({ success: false, message: "Query not found" });
+//             }
+
+//             // Insert comment
+//             const insertQuery = `
+//                 INSERT INTO query_comments 
+//                 (query_id, parent_comment_id, comment, admin_comment) 
+//                 VALUES (?, ?, ?, ?)
+//             `;
+//             connection.query(insertQuery, [queryId, parent_comment_id || null, comment, !!is_admin], (err, results) => {
+//                 if (err) {
+//                     return res.status(500).json({ success: false, message: "Error adding comment" });
+//                 }
+
+//                 res.json({
+//                     success: true,
+//                     message: "Comment added successfully",
+//                     data: {
+//                         id: results.insertId,
+//                         query_id: queryId,
+//                         parent_comment_id: parent_comment_id || null,
+//                         comment,
+//                         admin_comment: !!is_admin,
+//                         created_at: new Date()
+//                     }
+//                 });
+//             });
+//         });
+//     } catch (error) {
+//         res.status(500).json({ success: false, message: "Internal server error" });
+//     }
+// });
+
+
+
+// //======================= Get query details with nested comments =========
+// router.get('/:queryId', async (req, res) => {
+//     try {
+//         const { queryId } = req.params;
+
+//         const queryDetails = "SELECT * FROM user_queries WHERE id = ?";
+//         connection.query(queryDetails, [queryId], (err, queryResults) => {
+//             if (err) return res.status(500).json({ success: false, message: "Error fetching query details" });
+//             if (queryResults.length === 0) return res.status(404).json({ success: false, message: "Query not found" });
+
+//             const commentQuery = `
+//                 SELECT * FROM query_comments 
+//                 WHERE query_id = ? 
+//                 ORDER BY created_at ASC
+//             `;
+//             connection.query(commentQuery, [queryId], (commentErr, comments) => {
+//                 if (commentErr) return res.status(500).json({ success: false, message: "Error fetching comments" });
+
+//                 function buildTree(parentId = null) {
+//                     return comments
+//                         .filter(c => c.parent_comment_id === parentId)
+//                         .map(c => ({ ...c, replies: buildTree(c.id) }));
+//                 }
+
+//                 res.json({ success: true, data: { ...queryResults[0], comments: buildTree() } });
+//             });
+//         });
+//     } catch (error) {
+//         res.status(500).json({ success: false, message: "Internal server error" });
+//     }
+// });
+
+
+
+
+
+
+// ================= Add comment to query (user/admin) UPDATED===============
+router.post('/:queryId/comment', async (req, res) => {
+    try {
+        const { queryId } = req.params;
+        const { comment, is_admin } = req.body;
+
+        if (!comment || comment.trim() === "") {
+            return res.status(400).json({ success: false, message: "Comment is required" });
+        }
+
+          // Step 1: Query exist & status check
+        const checkQuery = "SELECT id, status FROM user_queries WHERE id = ?";
+        connection.query(checkQuery, [queryId], (checkErr, checkResults) => {
+            if (checkErr || checkResults.length === 0) {
+                return res.status(404).json({ success: false, message: "Query not found" });
+            }
+
+            //  Status closed check
+            if (checkResults[0].status === "closed") {
+                return res.status(403).json({
+                    success: false,
+                    message: "This query is closed. No more comments allowed."
+                });
+            }
+
+
+            // Insert comments
+            const insertQuery = `
+                INSERT INTO query_comments 
+                (query_id, comment, admin_comment) 
+                VALUES (?, ?, ?)
+            `;
+            connection.query(insertQuery, [queryId, comment, !!is_admin], (err, results) => {
+                if (err) {
+                    return res.status(500).json({ success: false, message: "Error adding comment" });
+                }
+
+                res.json({
+                    success: true,
+                    message: "Comment added successfully",
+                    data: {
+                        id: results.insertId,
+                        query_id: queryId,
+                        comment,
+                        role: !!is_admin ? "admin" : "user",
+                        created_at: new Date()
+                    }
+                });
+            });
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: "Internal server error" });
+    }
+});
+
+
+
+// ======================= Get query details with all comments user/admin UPDATED =========
+router.get('/:queryId', async (req, res) => {
+    try {
+        const { queryId } = req.params;
+
+        const queryDetails = "SELECT * FROM user_queries WHERE id = ?";
+        connection.query(queryDetails, [queryId], (err, queryResults) => {
+            if (err) return res.status(500).json({ success: false, message: "Error fetching query details" });
+            if (queryResults.length === 0) return res.status(404).json({ success: false, message: "Query not found" });
+
+            const commentQuery = `
+                SELECT id, query_id, comment, admin_comment, created_at
+                FROM query_comments 
+                WHERE query_id = ? 
+                ORDER BY created_at ASC
+            `;
+            connection.query(commentQuery, [queryId], (commentErr, comments) => {
+                if (commentErr) return res.status(500).json({ success: false, message: "Error fetching comments" });
+
+                const formattedTimeline = comments.map(c => ({
+                    id: c.id,
+                    comment: c.comment,
+                    role: c.admin_comment ? "admin" : "user",
+                    created_at: c.created_at
+                }));
+
+                res.json({
+                    success: true,
+                    data: {
+                        ...queryResults[0],
+                        comments: formattedTimeline
+                    }
+                });
+            });
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: "Internal server error" });
+    }
+});
+
+
+
+
+
 
 
 
