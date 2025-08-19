@@ -398,7 +398,7 @@ function generateQueryId() {
 // ======================= Submit a new query ==========
 router.post('/submit', async (req, res) => {
     try {
-   const { user_id, name, email, phone, telegram_id, query_type, message } = req.body;
+   const { user_id, name, email, phone, telegram_id, query_type, message, image } = req.body;
 
 
         // Validate required fields
@@ -423,13 +423,13 @@ router.post('/submit', async (req, res) => {
 
       const query = `
     INSERT INTO user_queries 
-    (id, user_id, name, email, phone, telegram_id, query_type, message) 
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    (id, user_id, name, email, phone, telegram_id, query_type, message,image) 
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
         connection.query(
             query,
-            [queryId, user_id, name, email, phone, telegram_id, query_type, message],
+            [queryId, user_id, name, email, phone, telegram_id, query_type, message, image || null],
             (err, results) => {
                 if (err) {
                     console.error('Error submitting query:', err);
@@ -445,6 +445,7 @@ router.post('/submit', async (req, res) => {
                     data: {
                         query_id: queryId,
                         status: 'pending',
+                        image: image || null,
                         submitted_at: new Date()
                     }
                 });
@@ -647,12 +648,12 @@ router.get('/user/:userId', async (req, res) => {
                     });
                 }
 
-                // Step 4: Group comments by query_id and format them
+                // Step 4: Group comments by query_id 
                 const commentMap = {};
                 comments.forEach(c => {
                     if (!commentMap[c.query_id]) commentMap[c.query_id] = [];
                     
-                    // Format comment with role field like in your first API
+                    // Format comment with role API
                     const formattedComment = {
                         id: c.id,
                         comment: c.comment,
