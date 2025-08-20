@@ -129,7 +129,7 @@ router.post('/disable-login', async (req, res) => {
   }
 });
 
-//==================== GET /admin/user-logins
+//==================== GET /admin/user-logins-logs
 router.get('/user-logins', async (req, res) => {
   const page = parseInt(req.query.page) || 1;       // default page = 1
   const limit = parseInt(req.query.limit) || 30;    // default limit = 30
@@ -183,6 +183,46 @@ router.post('/block-withdrawal', (req, res) => {
     if (err) return res.status(500).json({ error: 'Database error' });
 
     res.json({ message: `User withdrawal has been ${block ? 'blocked' : 'unblocked'} successfully.` });
+  });
+});
+
+// =================== Admin: Block or Unblock IP ===================
+router.post('/block-ip', async (req, res) => {
+  const { ip, block } = req.body; // true=block IP,false=unblock IP
+
+  if (!ip || typeof block === 'undefined') {
+    return res.status(400).json({ error: 'ip and block (true/false) required' });
+  }
+
+  try {
+    if (block) {
+      // Block IP
+      const query = "INSERT IGNORE INTO blocked_ips (ip_address) VALUES (?)";
+      connection.query(query, [ip], (err) => {
+        if (err) return res.status(500).json({ error: 'Database error while blocking IP' });
+        res.json({ message: `IP ${ip} has been blocked` });
+      });
+    } else {
+      // Unblock IP
+      const query = "DELETE FROM blocked_ips WHERE ip_address = ?";
+      connection.query(query, [ip], (err) => {
+        if (err) return res.status(500).json({ error: 'Database error while unblocking IP' });
+        res.json({ message: `IP ${ip} has been unblocked` });
+      });
+    }
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Something went wrong' });
+  }
+});
+
+
+// =================== Admin: Get Blocked IPs ===================
+router.get('/blocked-ips', (req, res) => {
+  const query = "SELECT * FROM blocked_ips ORDER BY blocked_at DESC";
+  connection.query(query, (err, results) => {
+    if (err) return res.status(500).json({ error: 'Database error' });
+    res.json({ blockedIps: results });
   });
 });
 

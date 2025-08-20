@@ -327,74 +327,88 @@ router.post('/login', async (req, res) => {
 
   if (!email || !password) {
     console.log('Login failed: Missing identifier or password');
-    return res.status(400).json({ error: 'Email/Username/ and password are required' });
+    return res.status(400).json({ error: 'Email/Username/Phone and password are required' });
   }
 
   try {
-    const query = "SELECT * FROM users WHERE email = ? OR username = ? OR phone = ?";
-    connection.query(query, [email, email, email], async (err, results) => {
-      if (err) return res.status(500).json({ error: 'Database query error' });
-      if (results.length === 0) return res.status(404).json({ error: 'User not found' });
+    // ----------------- Extract IP -----------------
+    const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket?.remoteAddress || null;
 
-      const user = results[0];
-
-      const isMatch = await bcrypt.compare(password, user.password);
-      if (!isMatch) return res.status(401).json({ error: 'Invalid credentials' });
-         //  NEW: Block login if user is disabled
-      if (user.is_login_disabled) {
-        return res.status(403).json({ error: 'Your login access has been disabled by admin' });
+    // ----------------- Blocked IP check -----------------
+    const blockQuery = "SELECT * FROM blocked_ips WHERE ip_address = ?";
+    connection.query(blockQuery, [ip], (blockErr, blockResults) => {
+      if (blockErr) return res.status(500).json({ error: 'Database error while checking IP' });
+      if (blockResults.length > 0) {
+        return res.status(403).json({ error: 'Access from this IP is blocked by admin' });
       }
 
-       // -----------------  Track this login -----------------
-     const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket?.remoteAddress || null;
-      const logQuery = `
-        INSERT INTO user_login_logs (user_id, phone, ip_address)
-        VALUES (?, ?, ?)
-      `;
-      connection.query(logQuery, [user.id, user.phone, ip], (logErr) => {
-        if (logErr) console.error('Login-log insert failed:', logErr);
-      });
-    
+      // ----------------- User check -----------------
+      const query = "SELECT * FROM users WHERE email = ? OR username = ? OR phone = ?";
+      connection.query(query, [email, email, email], async (err, results) => {
+        if (err) return res.status(500).json({ error: 'Database query error' });
+        if (results.length === 0) return res.status(404).json({ error: 'User not found' });
 
-      // Generate tokens
-      const accessToken = generateAccessToken(user);
-      const refreshToken = generateRefreshToken(user);
+        const user = results[0];
 
-      // Store refresh token in DB
-      const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
-      connection.query(
-        'INSERT INTO refresh_tokens (user_id, token, expires_at) VALUES (?, ?, ?)',
-        [user.id, refreshToken, expiresAt],
-        (err) => {
-          if (err) return res.status(500).json({ error: 'Error saving refresh token' });
+        // Password match
+        const isMatch = await bcrypt.compare(password, user.password);
+        if (!isMatch) return res.status(401).json({ error: 'Invalid credentials' });
 
-          // Fetch wallet details for the logged-in user
-          const walletQuery = "SELECT * FROM wallet WHERE userId = ?";
-          connection.query(walletQuery, [user.id], (err, walletResults) => {
-            if (err) return res.status(500).json({ error: 'Error fetching wallet data' });
-
-            res.json({
-              accessToken,
-              refreshToken,
-              user: {
-                id: user.id,
-                username: user.username,
-                email: user.email,
-                phone: user.phone,
-                dob: user.dob,
-                referalCode: user.my_referral_code
-              },
-              wallet: walletResults
-            });
-          });
+        // Block login if user is disabled
+        if (user.is_login_disabled) {
+          return res.status(403).json({ error: 'Your login access has been disabled by admin' });
         }
-      );
+
+        // ----------------- Track this login -----------------
+        const logQuery = `
+          INSERT INTO user_login_logs (user_id, phone, ip_address)
+          VALUES (?, ?, ?)
+        `;
+        connection.query(logQuery, [user.id, user.phone, ip], (logErr) => {
+          if (logErr) console.error('Login-log insert failed:', logErr);
+        });
+
+        // Generate tokens
+        const accessToken = generateAccessToken(user);
+        const refreshToken = generateRefreshToken(user);
+
+        // Store refresh token in DB
+        const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
+        connection.query(
+          'INSERT INTO refresh_tokens (user_id, token, expires_at) VALUES (?, ?, ?)',
+          [user.id, refreshToken, expiresAt],
+          (err) => {
+            if (err) return res.status(500).json({ error: 'Error saving refresh token' });
+
+            // Fetch wallet details
+            const walletQuery = "SELECT * FROM wallet WHERE userId = ?";
+            connection.query(walletQuery, [user.id], (err, walletResults) => {
+              if (err) return res.status(500).json({ error: 'Error fetching wallet data' });
+
+              res.json({
+                accessToken,
+                refreshToken,
+                user: {
+                  id: user.id,
+                  username: user.username,
+                  email: user.email,
+                  phone: user.phone,
+                  dob: user.dob,
+                  referalCode: user.my_referral_code
+                },
+                wallet: walletResults
+              });
+            });
+          }
+        );
+      });
     });
   } catch (error) {
     console.error('Unexpected error during login:', error);
     res.status(500).json({ error: 'Error logging in user' });
   }
 });
+
 
 // ======= Generate access token using REFRESH TOKEN =======
 router.post('/refresh', (req, res) => {
