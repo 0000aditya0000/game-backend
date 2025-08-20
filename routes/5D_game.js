@@ -14,7 +14,6 @@ app.use(cors());
 
 
 
-
 // ================== 5D Centralized Scheduler =================
 const io = getIO();
 const timers5D = {
@@ -50,6 +49,7 @@ Object.entries(timers5D).forEach(([timer, interval]) => {
 
           const lastPeriod = rows.length ? rows[0].period_number : 0;
           const nextPeriod = lastPeriod + 1;
+
 
           await axios.post(`${process.env.BASE_URL}/api/5d/generate-result-5d`, {
             periodNumber: nextPeriod,
