@@ -832,6 +832,58 @@ app.get("/report-5d/", async (req, res) => {
   }
 });
 
+// Endpoint to get the current remaining time for a specific timer duration
+app.post("/timer", (req, res) => {
+  const { duration } = req.body; // duration should be like "1min", "3min", etc.
+
+  if (!duration) {
+    return res.status(400).json({ success: false, message: "Duration is required." });
+  }
+
+  // Define durations in milliseconds
+  const durations = {
+    "1min": 60 * 1000,
+    "3min": 3 * 60 * 1000,
+    "5min": 5 * 60 * 1000,
+    "10min": 10 * 60 * 1000,
+  };
+
+  const totalDurationMs = durations[duration];
+
+  if (!totalDurationMs) {
+    return res.status(400).json({ success: false, message: "Invalid duration specified." });
+  }
+
+  // Calculate elapsed time within the current cycle
+  const now = Date.now();
+  const elapsedInCycle = now % totalDurationMs;
+
+  // Calculate remaining time in milliseconds
+  const remainingTimeMs = totalDurationMs - elapsedInCycle;
+
+  // Convert remaining time to seconds
+  const remainingTimeSeconds = Math.floor(remainingTimeMs / 1000);
+
+  // Format response based on duration
+  let remainingTimeResponse;
+  if (duration === "1min") {
+    remainingTimeResponse = {
+      remainingTimeSeconds: remainingTimeSeconds,
+      currentTime: now, // Optional: include server time
+    };
+  } else {
+    const remainingTimeMinutes = Math.floor(remainingTimeSeconds / 60);
+    const remainingTimeRemainingSeconds = remainingTimeSeconds % 60;
+    remainingTimeResponse = {
+      remainingTimeMinutes: remainingTimeMinutes,
+      remainingTimeSeconds: remainingTimeRemainingSeconds,
+      currentTime: now, // Optional: include server time
+    };
+  }
+
+  res.json(remainingTimeResponse);
+});
+
 
 
 
