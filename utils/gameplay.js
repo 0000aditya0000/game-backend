@@ -140,6 +140,68 @@ const canWithdraw = (userId) => {
 
 
 
+    //updated version of updateGameplayTracking
+// const updateGameplayTracking = async (userId, amountPlayed) => {
+//   return new Promise((resolve, reject) => {
+//     // Step 1: get all open deposits (FIFO order)
+//     const selectQuery = `
+//       SELECT id, required_gameplay, played_amount
+//       FROM gameplay_tracking
+//       WHERE userId = ? AND is_completed = 0
+//       ORDER BY created_at ASC
+//     `;
+
+//     connection.query(selectQuery, [userId], (err, rows) => {
+//       if (err) return reject(err);
+//       if (!rows.length) return resolve("No active deposits");
+
+//       let remaining = amountPlayed;
+//       const updatePromises = [];
+
+//       for (let row of rows) {
+//         if (remaining <= 0) break;
+
+//         const needed = row.required_gameplay - row.played_amount;
+
+//         if (remaining >= needed) {
+//           // is deposit ko complete kar de
+//           remaining -= needed;
+
+//           updatePromises.push(new Promise((res, rej) => {
+//             connection.query(
+//               `UPDATE gameplay_tracking
+//                SET played_amount = ?, is_completed = 1
+//                WHERE id = ?`,
+//               [row.required_gameplay, row.id],
+//               (err) => (err ? rej(err) : res())
+//             );
+//           }));
+//         } else {
+//           // deposit abhi complete nahi hua
+//           const newPlayed = row.played_amount + remaining;
+//           remaining = 0;
+
+//           updatePromises.push(new Promise((res, rej) => {
+//             connection.query(
+//               `UPDATE gameplay_tracking
+//                SET played_amount = ?
+//                WHERE id = ?`,
+//               [newPlayed, row.id],
+//               (err) => (err ? rej(err) : res())
+//             );
+//           }));
+//         }
+//       }
+
+//       Promise.all(updatePromises)
+//         .then(() => resolve("Gameplay updated"))
+//         .catch(reject);
+//     });
+//   });
+// };
+
+
+
 
 module.exports = {
   updateGameplayTracking,

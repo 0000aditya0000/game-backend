@@ -5,6 +5,7 @@ const cors = require("cors");
 const axios = require("axios");
 const { getIO } = require("../utils/socket");
 const pool = require("../config/pool")
+const {  updateGameplayTracking } = require("../utils/gameplay");
 
 
 const app = express();
@@ -417,7 +418,8 @@ app.post("/place-bet-5d", async (req, res) => {
        VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', NOW())`,
       [userId, position, betType, betValue || null, amount, periodNumber, timer]
     );
-
+      // Update gameplay tracking
+    await updateGameplayTracking(userId, amount);
     res.json({
       success: true,
       message: "Bet placed successfully",
