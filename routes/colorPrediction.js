@@ -14,12 +14,6 @@ const app = express();
 app.use(bodyParser.json());
 app.use(cors());
 // Database pool
-const pool = mysql.createPool({
-  host: "localhost",
-  user: "lucifer", // Replace with your MySQL username
-  password: "Welcome@noida2024", // Replace with your MySQL password
-  database: "stake",
-});
 
 
 function getColor(number) {

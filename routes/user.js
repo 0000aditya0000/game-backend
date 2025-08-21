@@ -2588,44 +2588,44 @@ router.post('/deposit', async (req, res) => {
  
 
 // Step: Give 200% cashback if INR and first deposit
-if (isFirstDeposit && cryptoname === 'INR') {
-   cashbackAmount = amount * 2;
+// if (isFirstDeposit && cryptoname === 'INR') {
+//    cashbackAmount = amount * 2;
 
-  const cashbackQuery = `
-    UPDATE wallet
-    SET balance = balance + ?
-    WHERE userId = ? AND cryptoname = 'INR'
-  `;
+//   const cashbackQuery = `
+//     UPDATE wallet
+//     SET balance = balance + ?
+//     WHERE userId = ? AND cryptoname = 'INR'
+//   `;
 
-  const cashbackResult = await new Promise((resolve, reject) => {
-    connection.query(cashbackQuery, [cashbackAmount, userId], (err, results) => {
-      if (err) return reject(err);
-      resolve(results);
-    });
-  });
+//   const cashbackResult = await new Promise((resolve, reject) => {
+//     connection.query(cashbackQuery, [cashbackAmount, userId], (err, results) => {
+//       if (err) return reject(err);
+//       resolve(results);
+//     });
+//   });
 
-  if (cashbackResult.affectedRows === 0) {
-    throw new Error(`Failed to credit INR cashback to wallet.`);
-  }
-}
+//   if (cashbackResult.affectedRows === 0) {
+//     throw new Error(`Failed to credit INR cashback to wallet.`);
+//   }
+// }
 
 
     // Update wallet
-    const updateWalletQuery = `
-      UPDATE wallet
-      SET balance = balance + ?
-      WHERE userId = ? AND cryptoname = ?
-    `;
-    const walletResult = await new Promise((resolve, reject) => {
-      connection.query(updateWalletQuery, [amount, userId, cryptoname], (err, results) => {
-        if (err) return reject(err);
-        resolve(results);
-      });
-    });
+    // const updateWalletQuery = `
+    //   UPDATE wallet
+    //   SET balance = balance + ?
+    //   WHERE userId = ? AND cryptoname = ?
+    // `;
+    // const walletResult = await new Promise((resolve, reject) => {
+    //   connection.query(updateWalletQuery, [amount, userId, cryptoname], (err, results) => {
+    //     if (err) return reject(err);
+    //     resolve(results);
+    //   });
+    // });
 
-    if (walletResult.affectedRows === 0) {
-      throw new Error(`Wallet entry for ${cryptoname} not found for the specified userId.`);
-    }
+    // if (walletResult.affectedRows === 0) {
+    //   throw new Error(`Wallet entry for ${cryptoname} not found for the specified userId.`);
+    // }
 
     // Insert deposit with provided orderid
     const insertDepositQuery = `
