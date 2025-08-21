@@ -5,6 +5,7 @@ const bodyParser = require("body-parser");
 const cors = require("cors");
 const axios = require("axios");
 const { getIO } = require("../utils/socket");
+const {  updateGameplayTracking } = require("../utils/gameplay");
 const pool = require("../config/pool"); // database connection
 
 
@@ -419,6 +420,9 @@ app.post("/place-bet-trx", async (req, res) => {
       [userId, betType, betValue, amount, periodNumber, timer]
     );
 
+    // Update gameplay tracking
+    await updateGameplayTracking(userId, amount);
+    
     res.json({
       success: true,
       message: "TRXwingo bet placed successfully",
