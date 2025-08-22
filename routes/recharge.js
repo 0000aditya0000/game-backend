@@ -53,48 +53,9 @@ router.get('/report/today-recharge-summary', async (req, res) => {
   }
 });
 
-// router.get("/get-all-recharges", async (req, res) => {
-//   try {
-//     const rows = await query(`
-//       SELECT 
-//         recharge_id,
-//         order_id,
-//         userId,
-//         recharge_amount AS amount,
-//         recharge_type AS type,
-//         payment_mode AS mode,
-//         recharge_status AS status,
-//         date,
-//         time
-//       FROM recharge
-//       ORDER BY recharge_id DESC
-//     `);
-
-//     res.status(200).json(rows);
-//   } catch (error) {
-//     console.error("Error fetching recharges:", error);
-//     res.status(500).json({ message: "Server error" });
-//   }
-// });
-
-//========================= get all recharge with pagination ==============
 router.get("/get-all-recharges", async (req, res) => {
   try {
-    let { page, limit } = req.query;
-
-    page = parseInt(page) || 1;
-    limit = parseInt(limit) || 100;
-    const offset = (page - 1) * limit;
-
-    // Base query
-    let whereClause = "WHERE 1=1";
-    const params = [];
-
-   
-
-    // Main query
-    const rows = await query(
-      `
+    const rows = await query(`
       SELECT 
         recharge_id,
         order_id,
@@ -106,33 +67,15 @@ router.get("/get-all-recharges", async (req, res) => {
         date,
         time
       FROM recharge
-      ${whereClause}
       ORDER BY recharge_id DESC
-      LIMIT ? OFFSET ?
-      `,
-      [...params, limit, offset]
-    );
+    `);
 
-    // Count query
-    const countResult = await query(
-      `SELECT COUNT(*) AS count FROM recharge ${whereClause}`,
-      params
-    );
-    const totalCount = countResult[0].count;
-
-    res.status(200).json({
-      totalRecharges: totalCount,
-      currentPage: page,
-      totalPages: Math.ceil(totalCount / limit),
-      data: rows,
-    });
+    res.status(200).json(rows);
   } catch (error) {
     console.error("Error fetching recharges:", error);
     res.status(500).json({ message: "Server error" });
   }
 });
-
-
 
 // Helper to wrap callback-based query in a Promise
 const query = (sql, params) => {
@@ -189,71 +132,6 @@ router.get("/recharge-detail/:orderId", async (req, res) => {
     res.status(200).json(response);
   } catch (error) {
     console.error("Error fetching recharge detail:", error);
-    res.status(500).json({ message: "Server error" });
-  }
-});
-
-
-//========================= filter recharges by Type and Mode ==============
-router.get("/get-all-recharges/sort", async (req, res) => {
-  try {
-    let { type, mode, page, limit } = req.query;
-
-    page = parseInt(page) || 1;
-    limit = parseInt(limit) || 20;
-    const offset = (page - 1) * limit;
-
-    // Base query
-    let whereClause = "WHERE 1=1";
-    const params = [];
-
-    // Apply filters if provided
-    if (type) {
-      whereClause += " AND recharge_type = ?";
-      params.push(type);
-    }
-
-    if (mode) {
-      whereClause += " AND payment_mode = ?";
-      params.push(mode);
-    }
-
-    // Main query
-    const rows = await query(
-      `
-      SELECT 
-        recharge_id,
-        order_id,
-        userId,
-        recharge_amount AS amount,
-        recharge_type AS type,
-        payment_mode AS mode,
-        recharge_status AS status,
-        date,
-        time
-      FROM recharge
-      ${whereClause}
-      ORDER BY recharge_id DESC
-      LIMIT ? OFFSET ?
-      `,
-      [...params, limit, offset]
-    );
-
-    // Count query
-    const countResult = await query(
-      `SELECT COUNT(*) AS count FROM recharge ${whereClause}`,
-      params
-    );
-    const totalCount = countResult[0].count;
-
-    res.status(200).json({
-      totalRecharges: totalCount,
-      currentPage: page,
-      totalPages: Math.ceil(totalCount / limit),
-      data: rows,
-    });
-  } catch (error) {
-    console.error("Error fetching recharges:", error);
     res.status(500).json({ message: "Server error" });
   }
 });
