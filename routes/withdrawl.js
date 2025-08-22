@@ -318,7 +318,160 @@ router.put('/withdrawal/approve/:id', async (req, res) => {
   }
 });
 
-// Get all withdrawal entries with user and bank details based on status
+// // Get all withdrawal entries with user and bank details based on status
+// router.get('/withdrawl-requests/:status', async (req, res) => {
+//   try {
+//     const withdrawalStatus = Number(req.params.status);
+//     const page = Math.max(1, parseInt(req.query.page) || 1);
+//     const limit = 20;
+//     const offset = (page - 1) * limit;
+
+//     // Validate status parameter
+//     if (![0, 1, 2, 3].includes(Number(withdrawalStatus))) {
+//       return res.status(400).json({
+//         success: false,
+//         message: 'Invalid status parameter. Status must be 0 (pending), 1 (approved), 2 (rejected), or 3 (all)'
+//       });
+//     }
+
+//     // Get total count first
+//     const countQuery = `
+//       SELECT COUNT(*) as total
+//       FROM withdrawl w
+//       WHERE ${withdrawalStatus === 3 ? '1=1' : 'w.status = ?'}
+//     `;
+
+//     connection.query(
+//       countQuery,
+//       withdrawalStatus === 3 ? [] : [withdrawalStatus],
+//       (countErr, countResults) => {
+//         if (countErr) {
+//           console.error('Error getting total count:', countErr);
+//           return res.status(500).json({
+//             success: false,
+//             message: 'Failed to fetch total records count'
+//           });
+//         }
+
+//         const totalRecords = countResults[0].total;
+//         const totalPages = Math.ceil(totalRecords / limit);
+
+//         // Fetch current page data plus one extra record to determine if next page exists
+//         const query = `
+//           SELECT 
+//             w.id,
+//             w.createdOn,
+//             w.balance,
+//             w.cryptoname,
+//             w.walletAddress,
+//             w.networkType,
+//             w.bankName,
+//             w.status as withdrawalStatus,
+//             u.username,
+//             u.email,
+//             u.name,
+//             u.phone,
+//             ba.accountName,
+//             ba.accountNumber,
+//             ba.ifscCode,
+//             ba.branch,
+//             ba.status as bankAccountStatus
+//           FROM withdrawl w
+//           LEFT JOIN users u ON w.userId = u.id
+//           LEFT JOIN bankaccount ba ON w.bankName = ba.id
+//           WHERE ${withdrawalStatus === 3 ? '1=1' : 'w.status = ?'}
+//           ORDER BY w.createdOn DESC
+//           LIMIT ? OFFSET ?
+//         `;
+
+//         const queryParams = withdrawalStatus === 3 
+//           ? [limit + 1, offset]
+//           : [withdrawalStatus, limit + 1, offset];
+
+//         connection.query(query, queryParams, (err, results) => {
+//           if (err) {
+//             console.error('Database error:', err);
+//             return res.status(500).json({ 
+//               success: false,
+//               message: 'Failed to fetch withdrawal records'
+//             });
+//           }
+
+//           // Check if there's a next page
+//           const hasNextPage = results.length > limit;
+//           // Remove the extra record we fetched
+//           const paginatedResults = results.slice(0, limit);
+
+//           const statusText = {
+//             0: 'Pending',
+//             1: 'Approved',
+//             2: 'Rejected',
+//             3: 'All'
+//           }[withdrawalStatus];
+
+//           const formattedResults = paginatedResults.map(item => ({
+//             withdrawalId: item.id,
+//             amount: item.balance,
+//             cryptoname: item.cryptoname,
+//             requestDate: item.createdOn,
+//             withdrawalStatus: {
+//               code: item.withdrawalStatus,
+//               status: {
+//                 0: 'Pending',
+//                 1: 'Approved',
+//                 2: 'Rejected'
+//               }[item.withdrawalStatus]
+//             },
+//             user: {
+//               userId: item.userId,
+//               username: item.username,
+//               name: item.name,
+//               email: item.email,
+//               phone: item.phone
+//             },
+//             withdrawalDetails: item.walletAddress ? {
+//               walletAddress: item.walletAddress,
+//               networkType: item.networkType
+//             } : {
+//               accountName: item.accountName,
+//               accountNumber: item.accountNumber,
+//               ifscCode: item.ifscCode,
+//               branch: item.branch,
+//               bankAccountStatus: item.bankAccountStatus
+//             }
+//           }));
+
+//           res.json({
+//             success: true,
+//             message: `${statusText} withdrawal records fetched successfully`,
+//             data: formattedResults,
+//             pagination: {
+//               currentPage: page,
+//               totalPages: totalPages,
+//               totalRecords: totalRecords,
+//               hasNextPage: hasNextPage,
+//               nextPage: hasNextPage ? page + 1 : null
+//             }
+//           });
+//         });
+//       }
+//     );
+//   } catch (error) {
+//     console.error('Error fetching withdrawal entries:', error);
+//     res.status(500).json({ 
+//       success: false,
+//       message: 'Something went wrong while fetching withdrawal records'
+//     });
+//   }
+// });
+
+
+
+
+
+// Get a single withdrawal entry by ID with user and bank details
+
+// ================= Get all withdrawal entries with user, bank details & wallet balance =================
 router.get('/withdrawl-requests/:status', async (req, res) => {
   try {
     const withdrawalStatus = Number(req.params.status);
@@ -330,11 +483,12 @@ router.get('/withdrawl-requests/:status', async (req, res) => {
     if (![0, 1, 2, 3].includes(Number(withdrawalStatus))) {
       return res.status(400).json({
         success: false,
-        message: 'Invalid status parameter. Status must be 0 (pending), 1 (approved), 2 (rejected), or 3 (all)'
+        message:
+          'Invalid status parameter. Status must be 0 (pending), 1 (approved), 2 (rejected), or 3 (all)'
       });
     }
 
-    // Get total count first
+    // Get total count
     const countQuery = `
       SELECT COUNT(*) as total
       FROM withdrawl w
@@ -356,7 +510,7 @@ router.get('/withdrawl-requests/:status', async (req, res) => {
         const totalRecords = countResults[0].total;
         const totalPages = Math.ceil(totalRecords / limit);
 
-        // Fetch current page data plus one extra record to determine if next page exists
+        // Fetch data with wallet balance (same cryptoname as withdrawal)
         const query = `
           SELECT 
             w.id,
@@ -367,6 +521,7 @@ router.get('/withdrawl-requests/:status', async (req, res) => {
             w.networkType,
             w.bankName,
             w.status as withdrawalStatus,
+            u.id as userId,
             u.username,
             u.email,
             u.name,
@@ -375,31 +530,32 @@ router.get('/withdrawl-requests/:status', async (req, res) => {
             ba.accountNumber,
             ba.ifscCode,
             ba.branch,
-            ba.status as bankAccountStatus
+            ba.status as bankAccountStatus,
+            wl.balance as walletBalance   -- 👈 Same cryptoname wallet balance
           FROM withdrawl w
           LEFT JOIN users u ON w.userId = u.id
           LEFT JOIN bankaccount ba ON w.bankName = ba.id
+          LEFT JOIN wallet wl ON w.userId = wl.userId AND w.cryptoname = wl.cryptoname -- 👈 Join by cryptoname
           WHERE ${withdrawalStatus === 3 ? '1=1' : 'w.status = ?'}
           ORDER BY w.createdOn DESC
           LIMIT ? OFFSET ?
         `;
 
-        const queryParams = withdrawalStatus === 3 
-          ? [limit + 1, offset]
-          : [withdrawalStatus, limit + 1, offset];
+        const queryParams =
+          withdrawalStatus === 3
+            ? [limit + 1, offset]
+            : [withdrawalStatus, limit + 1, offset];
 
         connection.query(query, queryParams, (err, results) => {
           if (err) {
             console.error('Database error:', err);
-            return res.status(500).json({ 
+            return res.status(500).json({
               success: false,
               message: 'Failed to fetch withdrawal records'
             });
           }
 
-          // Check if there's a next page
           const hasNextPage = results.length > limit;
-          // Remove the extra record we fetched
           const paginatedResults = results.slice(0, limit);
 
           const statusText = {
@@ -411,9 +567,10 @@ router.get('/withdrawl-requests/:status', async (req, res) => {
 
           const formattedResults = paginatedResults.map(item => ({
             withdrawalId: item.id,
-            amount: item.balance,
+            amountRequested: item.balance,
             cryptoname: item.cryptoname,
             requestDate: item.createdOn,
+            walletBalance: item.walletBalance || 0, // 👈 Same currency wallet balance
             withdrawalStatus: {
               code: item.withdrawalStatus,
               status: {
@@ -429,43 +586,45 @@ router.get('/withdrawl-requests/:status', async (req, res) => {
               email: item.email,
               phone: item.phone
             },
-            withdrawalDetails: item.walletAddress ? {
-              walletAddress: item.walletAddress,
-              networkType: item.networkType
-            } : {
-              accountName: item.accountName,
-              accountNumber: item.accountNumber,
-              ifscCode: item.ifscCode,
-              branch: item.branch,
-              bankAccountStatus: item.bankAccountStatus
-            }
+            withdrawalDetails: item.walletAddress
+              ? {
+                  walletAddress: item.walletAddress,
+                  networkType: item.networkType
+                }
+              : {
+                  accountName: item.accountName,
+                  accountNumber: item.accountNumber,
+                  ifscCode: item.ifscCode,
+                  branch: item.branch,
+                  bankAccountStatus: item.bankAccountStatus
+                }
           }));
 
           res.json({
             success: true,
             message: `${statusText} withdrawal records fetched successfully`,
-            data: formattedResults,
-            pagination: {
+              pagination: {
               currentPage: page,
               totalPages: totalPages,
               totalRecords: totalRecords,
               hasNextPage: hasNextPage,
               nextPage: hasNextPage ? page + 1 : null
-            }
+            },
+            data: formattedResults
           });
         });
       }
     );
   } catch (error) {
     console.error('Error fetching withdrawal entries:', error);
-    res.status(500).json({ 
+    res.status(500).json({
       success: false,
       message: 'Something went wrong while fetching withdrawal records'
     });
   }
 });
 
-// Get a single withdrawal entry by ID with user and bank details
+
 router.get('/withdrawl-request/:id/:status?', async (req, res) => {
   const withdrawlId = req.params.id;
   const withdrawalStatus = req.params.status;
@@ -577,6 +736,7 @@ router.get('/withdrawl-request/:id/:status?', async (req, res) => {
     });
   }
 });
+
 
 
 
