@@ -570,7 +570,7 @@ router.get('/withdrawl-requests/:status', async (req, res) => {
             amountRequested: item.balance,
             cryptoname: item.cryptoname,
             requestDate: item.createdOn,
-            walletBalance: item.walletBalance || 0, // 👈 Same currency wallet balance
+            walletBalance: item.walletBalance || 0, 
             withdrawalStatus: {
               code: item.withdrawalStatus,
               status: {
