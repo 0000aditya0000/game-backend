@@ -2335,6 +2335,77 @@ router.get("/referrals/:userId", async (req, res) => {
   }
 });
 
+ // ================= Get referral summary by user-id =================
+router.get("/referrals-summary/:userId", async (req, res) => {
+  const { userId } = req.params;
+
+  try {
+    // 1. Total Referrals count
+    const totalReferrals = await new Promise((resolve, reject) => {
+      const sql = `
+        SELECT COUNT(*) AS count 
+        FROM referrals 
+        WHERE referrer_id = ?
+      `;
+      connection.query(sql, [userId], (err, results) => {
+        if (err) return reject(err);
+        resolve(results[0].count || 0);
+      });
+    });
+
+    // 2. Direct Subordinates (level 1)
+    const directSubs = await new Promise((resolve, reject) => {
+      const sql = `
+        SELECT COUNT(*) AS count 
+        FROM referrals 
+        WHERE referrer_id = ? AND level = 1
+      `;
+      connection.query(sql, [userId], (err, results) => {
+        if (err) return reject(err);
+        resolve(results[0].count || 0);
+      });
+    });
+
+    // 3. Team Subordinates (level > 1)
+    const teamSubs = await new Promise((resolve, reject) => {
+      const sql = `
+        SELECT COUNT(*) AS count 
+        FROM referrals 
+        WHERE referrer_id = ? AND level > 1
+      `;
+      connection.query(sql, [userId], (err, results) => {
+        if (err) return reject(err);
+        resolve(results[0].count || 0);
+      });
+    });
+
+   // 4. Total Commission (only credited)
+ const totalCommission = await new Promise((resolve, reject) => {
+  const sql = `
+    SELECT IFNULL(SUM(amount), 0) AS total 
+    FROM referralcommissionhistory 
+    WHERE user_id = ? AND credited = 1
+  `;
+  connection.query(sql, [userId], (err, results) => {
+    if (err) return reject(err);
+    resolve(results[0].total || 0);
+  });
+});
+
+
+    res.json({
+      userId,
+      totalReferrals,
+      totalCommission,
+      directSubordinates: directSubs,
+      teamSubordinates: teamSubs,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
 
 //Get one user by id
 router.get('/user/:id',async (req, res) => {
