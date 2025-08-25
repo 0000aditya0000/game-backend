@@ -407,7 +407,7 @@ router.get('/getall', async (req, res) => {
 
 // Create a new bank account
 router.post('/addnew', async (req, res) => {
-  const { userId, type, accountname, accountnumber, ifsccode, branch, usdt, network } = req.body;
+  const { userId,accountHolder, type, accountname, accountnumber, ifsccode, branch, usdt, network } = req.body;
 
   try {
     // If type is USDT, check for duplicate USDT address
@@ -442,17 +442,17 @@ router.post('/addnew', async (req, res) => {
       if (type === 'bank') {
         // For bank accounts
         query = `
-          INSERT INTO bankaccount (userId, accountname, accountnumber, ifsccode, branch, status) 
-          VALUES (?, ?, ?, ?, ?, ?)
+          INSERT INTO bankaccount (userId,accountHolder, accountname, accountnumber, ifsccode, branch, status) 
+          VALUES (?, ?, ?, ?, ?,?, ?)
         `;
-        values = [userId, accountname, accountnumber, ifsccode, branch, 0];
+        values = [userId,accountHolder, accountname, accountnumber, ifsccode, branch, 0];
       } else {
         // For USDT accounts
         query = `
-          INSERT INTO bankaccount (userId, usdt, network, status) 
-          VALUES (?, ?, ?, ?)
+          INSERT INTO bankaccount (userId,accountHolder, usdt, network, status) 
+          VALUES (?, ?, ?,?, ?)
         `;
-        values = [userId, usdt, network, 0];
+        values = [userId,accountHolder, usdt, network, 0];
       }
 
       connection.query(query, values, (err, results) => {

@@ -652,7 +652,7 @@ router.put("/update", async (req, res) => {
 //============================================================================
 // make the authentication middleware available for all routes in this file
 // This will ensure that all routes in this file require authentication
-              router.use(authenticateToken);
+             // router.use(authenticateToken);
 //=============================================================================
 
 
