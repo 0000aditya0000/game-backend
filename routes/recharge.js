@@ -53,9 +53,29 @@ router.get('/report/today-recharge-summary', async (req, res) => {
   }
 });
 
+
+//========================= get all recharge with pagination & status filter ==============
 router.get("/get-all-recharges", async (req, res) => {
   try {
-    const rows = await query(`
+    let { page, limit, status } = req.query;
+
+    page = parseInt(page) || 1;
+    limit = parseInt(limit) || 50;
+    const offset = (page - 1) * limit;
+
+    // Base query
+    let whereClause = "WHERE 1=1";
+    const params = [];
+
+    // Status filter (success/pending) - optional
+    if (status && status !== "all") {
+      whereClause += " AND recharge_status = ?";
+      params.push(status);
+    }
+
+    // Main query
+    const rows = await query(
+      `
       SELECT 
         recharge_id,
         order_id,
@@ -67,15 +87,33 @@ router.get("/get-all-recharges", async (req, res) => {
         date,
         time
       FROM recharge
+      ${whereClause}
       ORDER BY recharge_id DESC
-    `);
+      LIMIT ? OFFSET ?
+      `,
+      [...params, limit, offset]
+    );
 
-    res.status(200).json(rows);
+    // Count query
+    const countResult = await query(
+      `SELECT COUNT(*) AS count FROM recharge ${whereClause}`,
+      params
+    );
+    const totalCount = countResult[0].count;
+
+    res.status(200).json({
+      totalRecharges: totalCount,
+      currentPage: page,
+      totalPages: Math.ceil(totalCount / limit),
+      data: rows,
+    });
   } catch (error) {
     console.error("Error fetching recharges:", error);
     res.status(500).json({ message: "Server error" });
   }
 });
+
+
 
 // Helper to wrap callback-based query in a Promise
 const query = (sql, params) => {
@@ -137,7 +175,7 @@ router.get("/recharge-detail/:orderId", async (req, res) => {
 });
 
 
-
+//========================= filter recharges by Type and Mode ==============
 router.get("/get-all-recharges/sort", async (req, res) => {
   try {
     let { type, mode, page, limit } = req.query;
@@ -152,9 +190,14 @@ router.get("/get-all-recharges/sort", async (req, res) => {
 
     // Apply filters if provided
     if (type) {
-      whereClause += " AND recharge_type = ?";
-      params.push(type);
-    }
+  if (type.toLowerCase() === "usdt") {
+    whereClause += " AND LOWER(recharge_type) LIKE ?";
+    params.push("%usdt%");
+  } else {
+    whereClause += " AND LOWER(recharge_type) = ?";
+    params.push(type.toLowerCase());
+  }
+}
 
     if (mode) {
       whereClause += " AND payment_mode = ?";
@@ -200,6 +243,10 @@ router.get("/get-all-recharges/sort", async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 });
+
+
+
+
 
 
 
