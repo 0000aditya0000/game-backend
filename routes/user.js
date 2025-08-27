@@ -1256,25 +1256,89 @@ router.get('/user-all-data/:userId', async (req, res) => {
       kyc_note: null
     };
 
-    //  Final Combined Data
+    
+    // -------------------- BET SUMMARY --------------------
+    const betQueries = [
+      { name: "Wingo-game", query: "SELECT SUM(amount) as total FROM bets WHERE user_id = ? AND status = 'processed'", params: [userId] },
+      { name: "Wingo-TRX", query: "SELECT SUM(amount) as total FROM bets_trx WHERE user_id = ? AND status != 'pending'", params: [userId] },
+      { name: "Wingo-5D", query: "SELECT SUM(amount) as total FROM bets_5d WHERE user_id = ? AND status != 'pending'", params: [userId] },
+      { name: "Other-games", query: "SELECT SUM(bet) as total FROM api_turnover WHERE login = ?", params: [user.username] }
+    ];
+
+    const betResults = {};
+    let totalBetAmount = 0;
+
+    for (const bq of betQueries) {
+      const rows = await new Promise((resolve, reject) => {
+        connection.query(bq.query, bq.params, (err, results) => {
+          if (err) return reject(err);
+          resolve(results);
+        });
+      });
+      const amount = rows[0]?.total ? Number(rows[0].total) : 0;
+      betResults[bq.name] = amount;
+      totalBetAmount += amount;
+    }
+
+    // -------------------- DEPOSIT SUMMARY --------------------
+    const depositSummary = await new Promise((resolve, reject) => {
+      const q = `
+        SELECT 
+          SUM(amount) as total_deposit,
+          MIN(created_at) as first_deposit_date
+        FROM deposits
+        WHERE userId = ?
+      `;
+      connection.query(q, [userId], (err, results) => {
+        if (err) return reject(err);
+        resolve(results[0]);
+      });
+    });
+
+    let firstDepositAmount = 0;
+    if (depositSummary.first_deposit_date) {
+      const firstDepositRow = await new Promise((resolve, reject) => {
+        connection.query(
+          "SELECT amount FROM deposits WHERE userId = ? ORDER BY created_at ASC LIMIT 1",
+          [userId],
+          (err, results) => {
+            if (err) return reject(err);
+            resolve(results[0]);
+          }
+        );
+      });
+      firstDepositAmount = firstDepositRow ? Number(firstDepositRow.amount) : 0;
+    }
+
+    const depositDetails = {
+      total_deposit: depositSummary.total_deposit ? Number(depositSummary.total_deposit) : 0,
+      first_deposit_amount: firstDepositAmount,
+      first_deposit_date: depositSummary.first_deposit_date || null
+    };
+
+    // -------------------- FINAL RESPONSE --------------------
     const userData = {
-      user: {
-        ...user,
-        password: undefined // remove sensitive field
-      },
+      user: { ...user, password: undefined },
       wallet: walletDetails,
       bankAccounts: bankDetails,
       referrals: referralDetails,
       withdrawals: withdrawalDetails,
-      kyc: kycDetails
+      kyc: kycDetails,
+      bets: {
+        total_bet_amount: totalBetAmount,
+        breakdown: betResults
+      },
+      deposits: depositDetails
     };
 
-    //  Send response
     res.json({
       success: true,
       message: 'User data retrieved successfully',
       data: userData
     });
+
+
+    
 
   } catch (error) {
     console.error('Error fetching user data:', error);
@@ -1321,7 +1385,7 @@ router.get('/game-transactions/:userId', async (req, res) => {
         SELECT COUNT(*) as total 
         FROM api_turnover 
         WHERE login = ?
-      `;
+      `; 
 
       connection.query(countQuery, [userId], (countErr, countResult) => {
         if (countErr) {
