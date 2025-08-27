@@ -1262,7 +1262,7 @@ router.get('/user-all-data/:userId', async (req, res) => {
       { name: "Wingo-game", query: "SELECT SUM(amount) as total FROM bets WHERE user_id = ? AND status = 'processed'", params: [userId] },
       { name: "Wingo-TRX", query: "SELECT SUM(amount) as total FROM bets_trx WHERE user_id = ? AND status != 'pending'", params: [userId] },
       { name: "Wingo-5D", query: "SELECT SUM(amount) as total FROM bets_5d WHERE user_id = ? AND status != 'pending'", params: [userId] },
-      { name: "Other-games", query: "SELECT SUM(bet) as total FROM api_turnover WHERE login = ?", params: [user.username] }
+      { name: "Other-games", query: "SELECT SUM(bet) as total FROM api_turnover WHERE login = ?", params: [userId] }
     ];
 
     const betResults = {};
@@ -1279,6 +1279,32 @@ router.get('/user-all-data/:userId', async (req, res) => {
       betResults[bq.name] = amount;
       totalBetAmount += amount;
     }
+
+
+        // -------------------- RECHARGE SUMMARY --------------------
+    const rechargeSummary = await new Promise((resolve, reject) => {
+      const q = `
+       SELECT 
+      SUM(recharge_amount) AS total_recharge
+      FROM recharge
+      WHERE userId = ? 
+       AND recharge_status = 'success';
+
+      `;
+      connection.query(q, [userId], (err, results) => {
+        if (err) return reject(err);
+        resolve(results[0]);
+      });
+    });
+
+    const rechargeDetails = {
+      total_recharge_amount: rechargeSummary.total_recharge ? Number(rechargeSummary.total_recharge) : 0
+    };
+
+
+
+
+
 
     // -------------------- DEPOSIT SUMMARY --------------------
     const depositSummary = await new Promise((resolve, reject) => {
@@ -1311,10 +1337,14 @@ router.get('/user-all-data/:userId', async (req, res) => {
     }
 
     const depositDetails = {
-      total_deposit: depositSummary.total_deposit ? Number(depositSummary.total_deposit) : 0,
+      total_deposit:rechargeDetails.total_recharge_amount,
       first_deposit_amount: firstDepositAmount,
       first_deposit_date: depositSummary.first_deposit_date || null
     };
+
+
+    
+
 
     // -------------------- FINAL RESPONSE --------------------
     const userData = {
@@ -1351,7 +1381,7 @@ router.get('/user-all-data/:userId', async (req, res) => {
 });
 
 
-
+ 
 //================ Get User Game Transactions =================
 router.get('/game-transactions/:userId', async (req, res) => {
   try {
