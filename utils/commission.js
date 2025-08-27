@@ -1,6 +1,6 @@
 const cron = require('node-cron');
 const connection = require('../config/db');
-
+  
 // Rebate levels based on total first deposits (in INR equivalent)
 const REBATE_LEVELS = [
     { min: 0, max: 5000, level: 1 },
