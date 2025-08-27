@@ -53,44 +53,25 @@ router.get('/report/today-recharge-summary', async (req, res) => {
   }
 });
 
-// router.get("/get-all-recharges", async (req, res) => {
-//   try {
-//     const rows = await query(`
-//       SELECT 
-//         recharge_id,
-//         order_id,
-//         userId,
-//         recharge_amount AS amount,
-//         recharge_type AS type,
-//         payment_mode AS mode,
-//         recharge_status AS status,
-//         date,
-//         time
-//       FROM recharge
-//       ORDER BY recharge_id DESC
-//     `);
 
-//     res.status(200).json(rows);
-//   } catch (error) {
-//     console.error("Error fetching recharges:", error);
-//     res.status(500).json({ message: "Server error" });
-//   }
-// });
-
-//========================= get all recharge with pagination ==============
+//========================= get all recharge with pagination & status filter ==============
 router.get("/get-all-recharges", async (req, res) => {
   try {
-    let { page, limit } = req.query;
+    let { page, limit, status } = req.query;
 
     page = parseInt(page) || 1;
-    limit = parseInt(limit) || 100;
+    limit = parseInt(limit) || 50;
     const offset = (page - 1) * limit;
 
     // Base query
     let whereClause = "WHERE 1=1";
     const params = [];
 
-   
+    // Status filter (success/pending) - optional
+    if (status && status !== "all") {
+      whereClause += " AND recharge_status = ?";
+      params.push(status);
+    }
 
     // Main query
     const rows = await query(
@@ -209,9 +190,14 @@ router.get("/get-all-recharges/sort", async (req, res) => {
 
     // Apply filters if provided
     if (type) {
-      whereClause += " AND recharge_type = ?";
-      params.push(type);
-    }
+  if (type.toLowerCase() === "usdt") {
+    whereClause += " AND LOWER(recharge_type) LIKE ?";
+    params.push("%usdt%");
+  } else {
+    whereClause += " AND LOWER(recharge_type) = ?";
+    params.push(type.toLowerCase());
+  }
+}
 
     if (mode) {
       whereClause += " AND payment_mode = ?";

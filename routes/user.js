@@ -1256,25 +1256,89 @@ router.get('/user-all-data/:userId', async (req, res) => {
       kyc_note: null
     };
 
-    //  Final Combined Data
+    
+    // -------------------- BET SUMMARY --------------------
+    const betQueries = [
+      { name: "Wingo-game", query: "SELECT SUM(amount) as total FROM bets WHERE user_id = ? AND status = 'processed'", params: [userId] },
+      { name: "Wingo-TRX", query: "SELECT SUM(amount) as total FROM bets_trx WHERE user_id = ? AND status != 'pending'", params: [userId] },
+      { name: "Wingo-5D", query: "SELECT SUM(amount) as total FROM bets_5d WHERE user_id = ? AND status != 'pending'", params: [userId] },
+      { name: "Other-games", query: "SELECT SUM(bet) as total FROM api_turnover WHERE login = ?", params: [user.username] }
+    ];
+
+    const betResults = {};
+    let totalBetAmount = 0;
+
+    for (const bq of betQueries) {
+      const rows = await new Promise((resolve, reject) => {
+        connection.query(bq.query, bq.params, (err, results) => {
+          if (err) return reject(err);
+          resolve(results);
+        });
+      });
+      const amount = rows[0]?.total ? Number(rows[0].total) : 0;
+      betResults[bq.name] = amount;
+      totalBetAmount += amount;
+    }
+
+    // -------------------- DEPOSIT SUMMARY --------------------
+    const depositSummary = await new Promise((resolve, reject) => {
+      const q = `
+        SELECT 
+          SUM(amount) as total_deposit,
+          MIN(created_at) as first_deposit_date
+        FROM deposits
+        WHERE userId = ?
+      `;
+      connection.query(q, [userId], (err, results) => {
+        if (err) return reject(err);
+        resolve(results[0]);
+      });
+    });
+
+    let firstDepositAmount = 0;
+    if (depositSummary.first_deposit_date) {
+      const firstDepositRow = await new Promise((resolve, reject) => {
+        connection.query(
+          "SELECT amount FROM deposits WHERE userId = ? ORDER BY created_at ASC LIMIT 1",
+          [userId],
+          (err, results) => {
+            if (err) return reject(err);
+            resolve(results[0]);
+          }
+        );
+      });
+      firstDepositAmount = firstDepositRow ? Number(firstDepositRow.amount) : 0;
+    }
+
+    const depositDetails = {
+      total_deposit: depositSummary.total_deposit ? Number(depositSummary.total_deposit) : 0,
+      first_deposit_amount: firstDepositAmount,
+      first_deposit_date: depositSummary.first_deposit_date || null
+    };
+
+    // -------------------- FINAL RESPONSE --------------------
     const userData = {
-      user: {
-        ...user,
-        password: undefined // remove sensitive field
-      },
+      user: { ...user, password: undefined },
       wallet: walletDetails,
       bankAccounts: bankDetails,
       referrals: referralDetails,
       withdrawals: withdrawalDetails,
-      kyc: kycDetails
+      kyc: kycDetails,
+      bets: {
+        total_bet_amount: totalBetAmount,
+        breakdown: betResults
+      },
+      deposits: depositDetails
     };
 
-    //  Send response
     res.json({
       success: true,
       message: 'User data retrieved successfully',
       data: userData
     });
+
+
+    
 
   } catch (error) {
     console.error('Error fetching user data:', error);
@@ -1321,7 +1385,7 @@ router.get('/game-transactions/:userId', async (req, res) => {
         SELECT COUNT(*) as total 
         FROM api_turnover 
         WHERE login = ?
-      `;
+      `; 
 
       connection.query(countQuery, [userId], (countErr, countResult) => {
         if (countErr) {
@@ -2114,7 +2178,7 @@ router.get('/transactions/:userId', async (req, res) => {
 
 //--------------------------------------- Protected Routes----------------------
 
-//router.use(authenticateToken);
+router.use(authenticateToken);
 
 //----------------------------------------------------------------------------------
 
@@ -2290,105 +2354,35 @@ const getDateRange = (type) => {
   }
 });
 
-// router.get("/referrals/:userId", async (req, res) => {
-//   const { userId } = req.params;
-
-//   try {
-//     // Get all referrals for this user up to level 5
-//     const referrals = await new Promise((resolve, reject) => {
-//       const sql = `
-//           SELECT 
-//             u.id,
-//             u.name,
-//             u.username,
-//             u.email,
-//             DATE(u.created_at) AS join_date,
-//             r.level,
-//             (SELECT d.amount FROM deposits d WHERE d.userId = u.id ORDER BY d.created_at ASC LIMIT 1) AS first_deposit,
-//             (SELECT SUM(d.amount) FROM deposits d WHERE d.userId = u.id) AS total_deposit,
-//             (SELECT SUM(b.amount) FROM bets b WHERE b.user_id = u.id) AS total_bets,            
-//             (SELECT IFNULL(SUM(c.amount), 0) FROM referralcommissionhistory c WHERE c.user_id = ? AND c.referred_user_id = u.id AND c.credited = 0 ) AS pending_commission
-//             FROM referrals r JOIN users u ON r.referred_id = u.id WHERE r.referrer_id = ? ORDER BY r.level
-//         `;
-//       const [referrerId] = [req.params.userId];
-
-//       connection.query(sql, [referrerId, referrerId], (err, results) => {
-//         if (err) return reject(err);
-//         resolve(results);
-//       });
-//     });
-
-//     // Group referrals by level
-//     const referralsByLevel = {};
-//     for (let i = 1; i <= 5; i++) {
-//       referralsByLevel[`level${i}`] = referrals.filter(ref => ref.level === i);
-//     }
-
-//     res.json({
-//       userId,
-//       totalReferrals: referrals.length,
-//       referralsByLevel
-//     });
-//   } catch (err) {
-//     console.error(err);
-//     res.status(500).json({ message: "Server error" });
-//   }
-// });
-
-// Pagination Added
 router.get("/referrals/:userId", async (req, res) => {
   const { userId } = req.params;
-  let { page, limit } = req.query;
-
-  page = parseInt(page) || 1;
-  limit = parseInt(limit) || 20;
-  const offset = (page - 1) * limit;
 
   try {
-    // Main query with pagination
+    // Get all referrals for this user up to level 5
     const referrals = await new Promise((resolve, reject) => {
       const sql = `
-        SELECT 
-          u.id,
-          u.name,
-          u.username,
-          u.email,
-          DATE(u.created_at) AS join_date,
-          r.level,
-          (SELECT d.amount FROM deposits d WHERE d.userId = u.id ORDER BY d.created_at ASC LIMIT 1) AS first_deposit,
-          (SELECT SUM(d.amount) FROM deposits d WHERE d.userId = u.id) AS total_deposit,
-          (SELECT SUM(b.amount) FROM bets b WHERE b.user_id = u.id) AS total_bets,            
-          (SELECT IFNULL(SUM(c.amount), 0) FROM referralcommissionhistory c 
-            WHERE c.user_id = ? AND c.referred_user_id = u.id AND c.credited = 0
-          ) AS pending_commission
-        FROM referrals r 
-        JOIN users u ON r.referred_id = u.id 
-        WHERE r.referrer_id = ?
-        ORDER BY r.level
-        LIMIT ? OFFSET ?
-      `;
+          SELECT 
+            u.id,
+            u.name,
+            u.username,
+            u.email,
+            DATE(u.created_at) AS join_date,
+            r.level,
+            (SELECT d.amount FROM deposits d WHERE d.userId = u.id ORDER BY d.created_at ASC LIMIT 1) AS first_deposit,
+            (SELECT SUM(d.amount) FROM deposits d WHERE d.userId = u.id) AS total_deposit,
+            (SELECT SUM(b.amount) FROM bets b WHERE b.user_id = u.id) AS total_bets,            
+            (SELECT IFNULL(SUM(c.amount), 0) FROM referralcommissionhistory c WHERE c.user_id = ? AND c.referred_user_id = u.id AND c.credited = 0 ) AS pending_commission
+            FROM referrals r JOIN users u ON r.referred_id = u.id WHERE r.referrer_id = ? ORDER BY r.level
+        `;
+      const [referrerId] = [req.params.userId];
 
-      connection.query(sql, [userId, userId, limit, offset], (err, results) => {
+      connection.query(sql, [referrerId, referrerId], (err, results) => {
         if (err) return reject(err);
         resolve(results);
       });
     });
 
-    // Count query for pagination
-    const totalCount = await new Promise((resolve, reject) => {
-      const countSql = `
-        SELECT COUNT(*) AS count 
-        FROM referrals r 
-        JOIN users u ON r.referred_id = u.id 
-        WHERE r.referrer_id = ?
-      `;
-      connection.query(countSql, [userId], (err, results) => {
-        if (err) return reject(err);
-        resolve(results[0].count);
-      });
-    });
-
-    // Group referrals by level (from current page results)
+    // Group referrals by level
     const referralsByLevel = {};
     for (let i = 1; i <= 5; i++) {
       referralsByLevel[`level${i}`] = referrals.filter(ref => ref.level === i);
@@ -2396,10 +2390,8 @@ router.get("/referrals/:userId", async (req, res) => {
 
     res.json({
       userId,
-      totalReferrals: totalCount,
-      currentPage: page,
-      totalPages: Math.ceil(totalCount / limit),
-      referralsByLevel,
+      totalReferrals: referrals.length,
+      referralsByLevel
     });
   } catch (err) {
     console.error(err);
@@ -3245,81 +3237,6 @@ router.get('/kyc-details/:userId', async (req, res) => {
   }
 });
 
-
-
-// Subordinate Data sorting 
-router.get("/referrals/sort/:userId", async (req, res) => {
-  const { userId } = req.params;
-  let { sortBy, page, limit } = req.query;
-
-  // Defaults
-  sortBy = sortBy || "total_bets"; // default sorting column
-  page = parseInt(page) || 1;
-  limit = parseInt(limit) || 15;
-
-  const offset = (page - 1) * limit;
-
-  try {
-    const referrals = await new Promise((resolve, reject) => {
-      const sql = `
-        SELECT 
-          u.id,
-          u.name,
-          u.username,
-          u.email,
-          DATE(u.created_at) AS join_date,
-          r.level,
-          (SELECT d.amount FROM deposits d WHERE d.userId = u.id ORDER BY d.created_at ASC LIMIT 1) AS first_deposit,
-          (SELECT SUM(d.amount) FROM deposits d WHERE d.userId = u.id) AS total_deposit,
-          (SELECT SUM(b.amount) FROM bets b WHERE b.user_id = u.id) AS total_bets,            
-          (SELECT IFNULL(SUM(c.amount), 0) FROM referralcommissionhistory c 
-            WHERE c.user_id = ? AND c.referred_user_id = u.id AND c.credited = 0 
-          ) AS pending_commission
-        FROM referrals r 
-        JOIN users u ON r.referred_id = u.id 
-        WHERE r.referrer_id = ? 
-        ORDER BY ${sortBy} DESC
-        LIMIT ? OFFSET ?
-      `;
-
-      connection.query(sql, [userId, userId, limit, offset], (err, results) => {
-        if (err) return reject(err);
-        resolve(results);
-      });
-    });
-
-    // Total count for pagination
-    const totalCount = await new Promise((resolve, reject) => {
-      const countSql = `
-        SELECT COUNT(*) AS count 
-        FROM referrals r 
-        JOIN users u ON r.referred_id = u.id 
-        WHERE r.referrer_id = ?
-      `;
-      connection.query(countSql, [userId], (err, results) => {
-        if (err) return reject(err);
-        resolve(results[0].count);
-      });
-    });
-
-    // Group referrals by level
-    const referralsByLevel = {};
-    for (let i = 1; i <= 5; i++) {
-      referralsByLevel[`level${i}`] = referrals.filter(ref => ref.level === i);
-    }
-
-    res.json({
-      userId,
-      totalReferrals: totalCount,
-      currentPage: page,
-      totalPages: Math.ceil(totalCount / limit),
-      referralsByLevel,
-    });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Server error" });
-  }
-});
 
 
 

@@ -4,6 +4,7 @@ const path = require('path');
 const connection = require('../config/db');
 const { CloudinaryStorage } = require('multer-storage-cloudinary');
 const cloudinary = require('../config/cloudinary.config'); 
+const { processDailyBettingCommissions } = require('../utils/commission');
 
 const router = express.Router();
 
@@ -103,6 +104,19 @@ router.delete('/slider/:id', (req, res) => {
   });
 });
 
+
+// ==============test cron job to credit commissions================
+router.get('/collect-cron', async (req, res) => {
+
+
+  try {
+    await  processDailyBettingCommissions();
+    res.send('Commission cron job executed successfully.');
+  } catch (err) {
+    console.error(" Cron Execution Failed:", err.message || err);
+    res.status(500).send(' Error in cron job');
+  }
+});
 
 
 

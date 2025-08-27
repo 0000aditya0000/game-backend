@@ -156,7 +156,7 @@ const { canWithdraw } = require("../utils/gameplay");
 //                   withdrawalId: result.insertId,
 //                   currency,
 //                   amount,
-//                   status: 'pending',
+//                  status: 'pending',
 //                   ...(currency === 'inr' 
 //                     ? { bankname } 
 //                     : { walletAddress, network })
@@ -318,160 +318,9 @@ router.put('/withdrawal/approve/:id', async (req, res) => {
   }
 });
 
-// // Get all withdrawal entries with user and bank details based on status
-// router.get('/withdrawl-requests/:status', async (req, res) => {
-//   try {
-//     const withdrawalStatus = Number(req.params.status);
-//     const page = Math.max(1, parseInt(req.query.page) || 1);
-//     const limit = 20;
-//     const offset = (page - 1) * limit;
-
-//     // Validate status parameter
-//     if (![0, 1, 2, 3].includes(Number(withdrawalStatus))) {
-//       return res.status(400).json({
-//         success: false,
-//         message: 'Invalid status parameter. Status must be 0 (pending), 1 (approved), 2 (rejected), or 3 (all)'
-//       });
-//     }
-
-//     // Get total count first
-//     const countQuery = `
-//       SELECT COUNT(*) as total
-//       FROM withdrawl w
-//       WHERE ${withdrawalStatus === 3 ? '1=1' : 'w.status = ?'}
-//     `;
-
-//     connection.query(
-//       countQuery,
-//       withdrawalStatus === 3 ? [] : [withdrawalStatus],
-//       (countErr, countResults) => {
-//         if (countErr) {
-//           console.error('Error getting total count:', countErr);
-//           return res.status(500).json({
-//             success: false,
-//             message: 'Failed to fetch total records count'
-//           });
-//         }
-
-//         const totalRecords = countResults[0].total;
-//         const totalPages = Math.ceil(totalRecords / limit);
-
-//         // Fetch current page data plus one extra record to determine if next page exists
-//         const query = `
-//           SELECT 
-//             w.id,
-//             w.createdOn,
-//             w.balance,
-//             w.cryptoname,
-//             w.walletAddress,
-//             w.networkType,
-//             w.bankName,
-//             w.status as withdrawalStatus,
-//             u.username,
-//             u.email,
-//             u.name,
-//             u.phone,
-//             ba.accountName,
-//             ba.accountNumber,
-//             ba.ifscCode,
-//             ba.branch,
-//             ba.status as bankAccountStatus
-//           FROM withdrawl w
-//           LEFT JOIN users u ON w.userId = u.id
-//           LEFT JOIN bankaccount ba ON w.bankName = ba.id
-//           WHERE ${withdrawalStatus === 3 ? '1=1' : 'w.status = ?'}
-//           ORDER BY w.createdOn DESC
-//           LIMIT ? OFFSET ?
-//         `;
-
-//         const queryParams = withdrawalStatus === 3 
-//           ? [limit + 1, offset]
-//           : [withdrawalStatus, limit + 1, offset];
-
-//         connection.query(query, queryParams, (err, results) => {
-//           if (err) {
-//             console.error('Database error:', err);
-//             return res.status(500).json({ 
-//               success: false,
-//               message: 'Failed to fetch withdrawal records'
-//             });
-//           }
-
-//           // Check if there's a next page
-//           const hasNextPage = results.length > limit;
-//           // Remove the extra record we fetched
-//           const paginatedResults = results.slice(0, limit);
-
-//           const statusText = {
-//             0: 'Pending',
-//             1: 'Approved',
-//             2: 'Rejected',
-//             3: 'All'
-//           }[withdrawalStatus];
-
-//           const formattedResults = paginatedResults.map(item => ({
-//             withdrawalId: item.id,
-//             amount: item.balance,
-//             cryptoname: item.cryptoname,
-//             requestDate: item.createdOn,
-//             withdrawalStatus: {
-//               code: item.withdrawalStatus,
-//               status: {
-//                 0: 'Pending',
-//                 1: 'Approved',
-//                 2: 'Rejected'
-//               }[item.withdrawalStatus]
-//             },
-//             user: {
-//               userId: item.userId,
-//               username: item.username,
-//               name: item.name,
-//               email: item.email,
-//               phone: item.phone
-//             },
-//             withdrawalDetails: item.walletAddress ? {
-//               walletAddress: item.walletAddress,
-//               networkType: item.networkType
-//             } : {
-//               accountName: item.accountName,
-//               accountNumber: item.accountNumber,
-//               ifscCode: item.ifscCode,
-//               branch: item.branch,
-//               bankAccountStatus: item.bankAccountStatus
-//             }
-//           }));
-
-//           res.json({
-//             success: true,
-//             message: `${statusText} withdrawal records fetched successfully`,
-//             data: formattedResults,
-//             pagination: {
-//               currentPage: page,
-//               totalPages: totalPages,
-//               totalRecords: totalRecords,
-//               hasNextPage: hasNextPage,
-//               nextPage: hasNextPage ? page + 1 : null
-//             }
-//           });
-//         });
-//       }
-//     );
-//   } catch (error) {
-//     console.error('Error fetching withdrawal entries:', error);
-//     res.status(500).json({ 
-//       success: false,
-//       message: 'Something went wrong while fetching withdrawal records'
-//     });
-//   }
-// });
 
 
-
-
-
-// Get a single withdrawal entry by ID with user and bank details
-
-// ================= Get all withdrawal entries with user, bank details & wallet balance =================
+// ================ Get all withdrawal entries with user and bank details with wallet balance =================
 router.get('/withdrawl-requests/:status', async (req, res) => { 
   try {
     const withdrawalStatus = Number(req.params.status);
@@ -521,7 +370,7 @@ router.get('/withdrawl-requests/:status', async (req, res) => {
             w.networkType,
             w.bankName,
             w.status as withdrawalStatus,
-            w.beforeBalance,     
+            w.beforeBalance,   
             w.afterBalance,      
             u.id as userId,
             u.username,
@@ -633,6 +482,7 @@ router.get('/withdrawl-requests/:status', async (req, res) => {
 
 
 
+// Get a single withdrawal entry by ID with user and bank details
 
 router.get('/withdrawl-request/:id/:status?', async (req, res) => {
   const withdrawlId = req.params.id;
@@ -799,11 +649,10 @@ router.put("/update", async (req, res) => {
   }
 });
 
-
 //============================================================================
 // make the authentication middleware available for all routes in this file
 // This will ensure that all routes in this file require authentication
-              router.use(authenticateToken);
+             // router.use(authenticateToken);
 //=============================================================================
 
 
