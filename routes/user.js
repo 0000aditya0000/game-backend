@@ -1385,7 +1385,7 @@ router.get('/game-transactions/:userId', async (req, res) => {
         SELECT COUNT(*) as total 
         FROM api_turnover 
         WHERE login = ?
-      `;
+      `; 
 
       connection.query(countQuery, [userId], (countErr, countResult) => {
         if (countErr) {
