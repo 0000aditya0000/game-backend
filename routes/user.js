@@ -11,6 +11,7 @@ const moment = require('moment');
 const { generateAccessToken, generateRefreshToken, verifyRefreshToken } = require('../utils/jwt');
 const authenticateToken = require('../middleware/authenticateToken');
 const { insertGameplayTracking } = require('../utils/gameplay');
+const { processDailyBettingCommissions } = require('../utils/commission');
 
 const router = express.Router();
 
@@ -945,6 +946,17 @@ router.get('/test/run-cron', async (req, res) => {
   }
 });
 
+
+// ==============test cron job to collect total bet================
+router.get('/bet-collect-cron', async (req, res) => {
+  try {
+    await  processDailyBettingCommissions();
+    res.send('Commission cron job executed successfully.');
+  } catch (err) {
+    console.error(" Cron Execution Failed:", err.message || err);
+    res.status(500).send(' Error in cron job');
+  }
+});
 
 
 //===== Get user's successful withdrawals and deposits in a date range ===
