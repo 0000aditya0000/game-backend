@@ -105,18 +105,6 @@ router.delete('/slider/:id', (req, res) => {
 });
 
 
-// ==============test cron job to credit commissions================
-router.get('/collect-cron', async (req, res) => {
-
-
-  try {
-    await  processDailyBettingCommissions();
-    res.send('Commission cron job executed successfully.');
-  } catch (err) {
-    console.error(" Cron Execution Failed:", err.message || err);
-    res.status(500).send(' Error in cron job');
-  }
-});
 
 
 
