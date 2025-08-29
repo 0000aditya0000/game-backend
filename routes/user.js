@@ -123,7 +123,7 @@ const upload = multer({ storage });
 // });
 router.post('/deposit', async (req, res) => {
   const { userId, amount, cryptoname, orderid } = req.body;
-  const { calculateCommissions } = require('../utils/commission');
+//  const { calculateCommissions } = require('../utils/commission');
 
   const validCryptos = ['BTC', 'ETH', 'LTC', 'USDT', 'SOL', 'DOGE', 'BCH', 'XRP', 'TRX', 'EOS', 'INR', 'CP'];
 
@@ -230,44 +230,44 @@ router.post('/deposit', async (req, res) => {
       await insertGameplayTracking(userId, depositId, amount);
     }
 
-    // Handle referral commissions if first deposit
-    let commissionsDistributed = false;
-    if (isFirstDeposit) {
-      const referrerId = userResult.referred_by || null;
-      if (referrerId) {
-        const commissions = await calculateCommissions(amount, referrerId, cryptoname, connection);
-        for (const commission of commissions) {
-          const logQuery = `
-            INSERT INTO referralcommissionhistory 
-            (user_id, referred_user_id, level, rebate_level, amount, deposit_amount, cryptoname, credited)
-            VALUES (?, ?, ?, ?, ?, ?, ?, FALSE)
-          `;
-          await new Promise((resolve, reject) => {
-            connection.query(logQuery, [
-              commission.userId,
-              userId,
-              commission.level,
-              commission.rebateLevel,
-              commission.commission,
-              amount,
-              cryptoname
-            ], (err, results) => {
-              if (err) return reject(err);
-              resolve(results);
-            });
-          });
-        }
-        commissionsDistributed = true;
-      }
-    }
+    // // Handle referral commissions if first deposit
+    // let commissionsDistributed = false;
+    // if (isFirstDeposit) {
+    //   const referrerId = userResult.referred_by || null;
+    //   if (referrerId) {
+    //     const commissions = await calculateCommissions(amount, referrerId, cryptoname, connection);
+    //     for (const commission of commissions) {
+    //       const logQuery = `
+    //         INSERT INTO referralcommissionhistory 
+    //         (user_id, referred_user_id, level, rebate_level, amount, deposit_amount, cryptoname, credited)
+    //         VALUES (?, ?, ?, ?, ?, ?, ?, FALSE)
+    //       `;
+    //       await new Promise((resolve, reject) => {
+    //         connection.query(logQuery, [
+    //           commission.userId,
+    //           userId,
+    //           commission.level,
+    //           commission.rebateLevel,
+    //           commission.commission,
+    //           amount,
+    //           cryptoname
+    //         ], (err, results) => {
+    //           if (err) return reject(err);
+    //           resolve(results);
+    //         });
+    //       });
+    //     }
+    //     commissionsDistributed = true;
+    //   }
+    // }
 
-    // Commit transaction
-    await new Promise((resolve, reject) => {
-      connection.commit(err => {
-        if (err) return reject(err);
-        resolve();
-      });
-    });
+    // // Commit transaction
+    // await new Promise((resolve, reject) => {
+    //   connection.commit(err => {
+    //     if (err) return reject(err);
+    //     resolve();
+    //   });
+    // });
 
     res.json({
       message: `Deposit in ${cryptoname} processed successfully`,
@@ -277,8 +277,7 @@ router.post('/deposit', async (req, res) => {
       orderid,
       isFirstDeposit,
       cashbackAmount,
-      commissionsDistributed,
-      note: commissionsDistributed ? 'Commissions will be credited to wallets at 12:00 AM IST' : undefined
+      note: 'Commissions will be credited to wallets at 12:00 AM IST' 
     });
 
   } catch (error) {
