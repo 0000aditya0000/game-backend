@@ -1354,7 +1354,7 @@ router.get('/user-all-data/:userId', async (req, res) => {
       const q = `
         SELECT 
           SUM(amount) as total_deposit,
-          MIN(created_at) as first_deposit_date
+          MIN(date) as first_deposit_date
         FROM deposits
         WHERE userId = ?
       `;
