@@ -1,6 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const moment = require('moment');
+const momentTz = require("moment-timezone");
 const db = require("../config/db");
 const authenticateToken = require('../middleware/authenticateToken');
 
@@ -54,6 +55,8 @@ router.get('/report/today-recharge-summary', async (req, res) => {
 });
 
 
+
+
 //========================= get all recharge with pagination & status filter ==============
 router.get("/get-all-recharges", async (req, res) => {
   try {
@@ -94,6 +97,18 @@ router.get("/get-all-recharges", async (req, res) => {
       [...params, limit, offset]
     );
 
+    //  Format date & time for IST
+    const formattedRows = rows.map(r => ({
+      ...r,
+      date: r.date
+        ? momentTz(r.date).tz("Asia/Kolkata").format("YYYY-MM-DD")
+        : null,
+      time: r.time
+        ? momentTz(r.time, "HH:mm:ss").tz("Asia/Kolkata").format("HH:mm:ss")
+        : null,
+  
+    }));
+
     // Count query
     const countResult = await query(
       `SELECT COUNT(*) AS count FROM recharge ${whereClause}`,
@@ -105,13 +120,14 @@ router.get("/get-all-recharges", async (req, res) => {
       totalRecharges: totalCount,
       currentPage: page,
       totalPages: Math.ceil(totalCount / limit),
-      data: rows,
+      data: formattedRows,
     });
   } catch (error) {
     console.error("Error fetching recharges:", error);
     res.status(500).json({ message: "Server error" });
   }
 });
+
 
 
 
@@ -175,6 +191,8 @@ router.get("/recharge-detail/:orderId", async (req, res) => {
 });
 
 
+
+
 //========================= filter recharges by Type and Mode ==============
 router.get("/get-all-recharges/sort", async (req, res) => {
   try {
@@ -190,14 +208,14 @@ router.get("/get-all-recharges/sort", async (req, res) => {
 
     // Apply filters if provided
     if (type) {
-  if (type.toLowerCase() === "usdt") {
-    whereClause += " AND LOWER(recharge_type) LIKE ?";
-    params.push("%usdt%");
-  } else {
-    whereClause += " AND LOWER(recharge_type) = ?";
-    params.push(type.toLowerCase());
-  }
-}
+      if (type.toLowerCase() === "usdt") {
+        whereClause += " AND LOWER(recharge_type) LIKE ?";
+        params.push("%usdt%");
+      } else {
+        whereClause += " AND LOWER(recharge_type) = ?";
+        params.push(type.toLowerCase());
+      }
+    }
 
     if (mode) {
       whereClause += " AND payment_mode = ?";
@@ -225,6 +243,17 @@ router.get("/get-all-recharges/sort", async (req, res) => {
       [...params, limit, offset]
     );
 
+    // Format date & time
+    const formattedRows = rows.map(r => ({
+      ...r,
+      date: r.date
+        ? momentTz(r.date).tz("Asia/Kolkata").format("YYYY-MM-DD")
+        : null,
+      time: r.time
+        ? momentTz(r.time, "HH:mm:ss").tz("Asia/Kolkata").format("HH:mm:ss")
+        : null,
+    }));
+
     // Count query
     const countResult = await query(
       `SELECT COUNT(*) AS count FROM recharge ${whereClause}`,
@@ -236,13 +265,14 @@ router.get("/get-all-recharges/sort", async (req, res) => {
       totalRecharges: totalCount,
       currentPage: page,
       totalPages: Math.ceil(totalCount / limit),
-      data: rows,
+      data: formattedRows,
     });
   } catch (error) {
     console.error("Error fetching recharges:", error);
     res.status(500).json({ message: "Server error" });
   }
 });
+
 
 
 
