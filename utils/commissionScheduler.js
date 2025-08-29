@@ -103,9 +103,9 @@ async function creditCommissions() {
 //     scheduled: true,
 //     timezone: 'UTC'
 // });
-cron.schedule('1 0 * * *', creditCommissions, {
-    scheduled: true,
-    timezone: 'Asia/Kolkata'
+cron.schedule('30 18 * * *', creditCommissions, {
+  scheduled: true,
+  timezone: 'UTC'
 });
 
 console.log('Commission scheduler loaded. Cron job scheduled for 12:00 AM IST.');
