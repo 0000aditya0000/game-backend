@@ -8,6 +8,7 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const moment = require('moment');
+const momentTz = require('moment-timezone');
 const { generateAccessToken, generateRefreshToken, verifyRefreshToken } = require('../utils/jwt');
 const authenticateToken = require('../middleware/authenticateToken');
 const { insertGameplayTracking } = require('../utils/gameplay');
@@ -123,7 +124,7 @@ const upload = multer({ storage });
 // });
 router.post('/deposit', async (req, res) => {
   const { userId, amount, cryptoname, orderid } = req.body;
-//  const { calculateCommissions } = require('../utils/commission');
+
 
   const validCryptos = ['BTC', 'ETH', 'LTC', 'USDT', 'SOL', 'DOGE', 'BCH', 'XRP', 'TRX', 'EOS', 'INR', 'CP'];
 
@@ -211,17 +212,43 @@ router.post('/deposit', async (req, res) => {
     //   throw new Error(`Wallet entry for ${cryptoname} not found for the specified userId.`);
     // }
 
-    // Insert deposit with provided orderid
-    const insertDepositQuery = `
-      INSERT INTO deposits (userId, amount, orderid, cryptoname, is_first)
-      VALUES (?, ?, ?, ?, ?)
-    `;
-    const depositInsertResult = await new Promise((resolve, reject) => {
-      connection.query(insertDepositQuery, [userId, amount, orderid, cryptoname, isFirstDeposit], (err, results) => {
-        if (err) return reject(err);
-        resolve(results);
-      });
-    });
+   // Check recharge status before inserting deposit
+const rechargeQuery = `
+  SELECT date, time, recharge_status 
+  FROM recharge 
+  WHERE order_id = ? 
+  LIMIT 1
+`;
+
+const [rechargeResult] = await new Promise((resolve, reject) => {
+  connection.query(rechargeQuery, [orderid], (err, results) => {
+    if (err) return reject(err);
+    resolve(results);
+  });
+});
+
+if (!rechargeResult) {
+  throw new Error('No matching recharge found for this orderId.');
+}
+
+if (rechargeResult.recharge_status.toLowerCase() !== 'success') {
+  throw new Error('Recharge status is not success, cannot create deposit.');
+}
+
+const { date, time } = rechargeResult;
+
+// Insert deposit with recharge date and time
+const insertDepositQuery = `
+  INSERT INTO deposits (userId, amount, orderid, cryptoname, is_first, date, time)
+  VALUES (?, ?, ?, ?, ?, ?, ?)
+`;
+
+const depositInsertResult = await new Promise((resolve, reject) => {
+  connection.query(insertDepositQuery, [userId, amount, orderid, cryptoname, isFirstDeposit, date, time], (err, results) => {
+    if (err) return reject(err);
+    resolve(results);
+  });
+});
 
     
     const depositId = depositInsertResult.insertId;
@@ -261,13 +288,16 @@ router.post('/deposit', async (req, res) => {
     //   }
     // }
 
-    // // Commit transaction
-    // await new Promise((resolve, reject) => {
-    //   connection.commit(err => {
-    //     if (err) return reject(err);
-    //     resolve();
-    //   });
-    // });
+    // Commit transaction
+    await new Promise((resolve, reject) => {
+      connection.commit(err => {
+        if (err) return reject(err);
+        resolve();
+      });
+    });
+
+    const formattedDate = momentTz(date).tz("Asia/Kolkata").format("YYYY-MM-DD");
+   const formattedTime = time; 
 
     res.json({
       message: `Deposit in ${cryptoname} processed successfully`,
@@ -277,6 +307,8 @@ router.post('/deposit', async (req, res) => {
       orderid,
       isFirstDeposit,
       cashbackAmount,
+      date: formattedDate,
+      time: formattedTime,
       note: 'Commissions will be credited to wallets at 12:00 AM IST' 
     });
 
