@@ -2441,7 +2441,7 @@ router.get("/referrals/:userId", async (req, res) => {
             u.email,
             DATE(u.created_at) AS join_date,
             r.level,
-            (SELECT d.amount FROM deposits d WHERE d.userId = u.id ORDER BY d.created_at ASC LIMIT 1) AS first_deposit,
+            (SELECT d.amount FROM deposits d WHERE d.userId = u.id ORDER BY d.date ASC LIMIT 1) AS first_deposit,
             (SELECT SUM(d.amount) FROM deposits d WHERE d.userId = u.id) AS total_deposit,
             (SELECT SUM(b.amount) FROM bets b WHERE b.user_id = u.id) AS total_bets,            
             (SELECT IFNULL(SUM(c.amount), 0) FROM referralcommissionhistory c WHERE c.user_id = ? AND c.referred_user_id = u.id AND c.credited = 0 ) AS pending_commission
