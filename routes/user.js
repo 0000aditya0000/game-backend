@@ -1368,7 +1368,7 @@ router.get('/user-all-data/:userId', async (req, res) => {
     if (depositSummary.first_deposit_date) {
       const firstDepositRow = await new Promise((resolve, reject) => {
         connection.query(
-          "SELECT amount FROM deposits WHERE userId = ? ORDER BY created_at ASC LIMIT 1",
+          "SELECT amount FROM deposits WHERE userId = ? ORDER BY date ASC LIMIT 1",
           [userId],
           (err, results) => {
             if (err) return reject(err);
