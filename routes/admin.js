@@ -227,6 +227,85 @@ router.get('/blocked-ips', (req, res) => {
 });
 
 
+//================== Admin: Edit User Bonus Balance ===================
+router.put("/edit-bonus", (req, res) => {
+  const { userId, bonus } = req.body;
+  const newBonusNum = parseFloat(bonus);
+
+  if (!userId || isNaN(newBonusNum) || newBonusNum < 0) {
+    return res.status(400).json({ success: false, message: "Invalid input" });
+  }
+
+  connection.beginTransaction(err => {
+    if (err) {
+      console.error("Begin transaction error:", err);
+      return res.status(500).json({ success: false, message: "DB transaction error" });
+    }
+
+    //  INR wallet row
+    const getWalletQuery = `
+      SELECT bonus_balance 
+      FROM wallet 
+      WHERE userId = ? AND cryptoname = 'INR' 
+      FOR UPDATE
+    `;
+    connection.query(getWalletQuery, [userId], (walletErr, walletRows) => {
+      if (walletErr) {
+        console.error("Wallet query error:", walletErr);
+        return connection.rollback(() => res.status(500).json({ success: false, message: "Error fetching wallet", error: walletErr.message }));
+      }
+
+      if (!walletRows || walletRows.length === 0) {
+        return connection.rollback(() => res.status(404).json({ success: false, message: "INR Wallet not found" }));
+      }
+
+      const wallet = walletRows[0];
+      const bonusBefore = parseFloat(wallet.bonus_balance || 0);
+
+      const updateWalletQuery = `
+        UPDATE wallet 
+        SET bonus_balance = ? 
+        WHERE userId = ? AND cryptoname = 'INR'
+      `;
+      connection.query(updateWalletQuery, [newBonusNum, userId], (updErr) => {
+        if (updErr) {
+          console.error("Update wallet error:", updErr);
+          return connection.rollback(() => res.status(500).json({ success: false, message: "Error updating wallet", error: updErr.message }));
+        }
+
+        //  Insert into history
+        // const insertHistoryQuery = `
+        //   INSERT INTO bonus_transfer_history 
+        //     (userId, amount, bonus_balance_before, bonus_balance_after, wallet_balance_before, wallet_balance_after)
+        //   VALUES (?, ?, ?, ?, 0, 0)
+        // `;
+        // connection.query(insertHistoryQuery, [userId, newBonusNum - bonusBefore, bonusBefore, newBonusNum, 0, 0], (histErr) => {
+        //   if (histErr) {
+        //     console.error("Insert history error:", histErr);
+        //     return connection.rollback(() => res.status(500).json({ success: false, message: "Error saving history", error: histErr.message }));
+        //   }
+
+          connection.commit(commitErr => {
+            if (commitErr) {
+              console.error("Commit error:", commitErr);
+              return connection.rollback(() => res.status(500).json({ success: false, message: "Commit failed", error: commitErr.message }));
+            }
+
+            return res.json({
+              success: true,
+              message: "Bonus balance updated successfully",
+              data: {
+                userId,
+                bonus_before: bonusBefore,
+                bonus_after: newBonusNum
+              }
+            });
+          });
+       // });
+      });
+    });
+  });
+});
 
 
 

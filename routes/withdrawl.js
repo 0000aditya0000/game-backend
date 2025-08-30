@@ -649,6 +649,165 @@ router.put("/update", async (req, res) => {
   }
 });
 
+
+
+//================ Transfer Bonus to Wallet =================
+
+router.post('/transfer-bonus', (req, res) => {
+  const { userId, amount } = req.body;
+  const amountNum = parseFloat(amount);
+
+  if (!userId || isNaN(amountNum) || amountNum <= 0) {
+    return res.status(400).json({ success: false, message: "Invalid input" });
+  }
+
+  connection.beginTransaction(err => {
+    if (err) {
+      console.error('Begin transaction error:', err);
+      return res.status(500).json({ success: false, message: 'DB transaction error' });
+    }
+
+    // Lock the wallet row
+    const getWalletQuery = `
+      SELECT balance, bonus_balance 
+      FROM wallet 
+      WHERE userId = ? AND cryptoname = 'INR' 
+      FOR UPDATE
+    `;
+    connection.query(getWalletQuery, [userId], (walletErr, walletRows) => {
+      if (walletErr) {
+        console.error('Wallet query error:', walletErr);
+        return connection.rollback(() => res.status(500).json({ success: false, message: 'Error fetching wallet', error: walletErr.message }));
+      }
+
+      if (!walletRows || walletRows.length === 0) {
+        return connection.rollback(() => res.status(404).json({ success: false, message: 'Wallet not found' }));
+      }
+
+      const wallet = walletRows[0];
+      const bonusBefore = parseFloat(wallet.bonus_balance || 0);
+      const walletBefore = parseFloat(wallet.balance || 0);
+
+      if (bonusBefore < amountNum) {
+        return connection.rollback(() => res.status(400).json({ success: false, message: 'Insufficient bonus balance' }));
+      }
+
+      // safe arithmetic + rounding
+      const bonusAfter = Number((bonusBefore - amountNum).toFixed(2));
+      const walletAfter = Number((walletBefore + amountNum).toFixed(2));
+
+      const updateWalletQuery = `
+        UPDATE wallet 
+        SET bonus_balance = ?, balance = ? 
+        WHERE userId = ? AND cryptoname = 'INR'
+      `;
+      connection.query(updateWalletQuery, [bonusAfter, walletAfter, userId], (updErr) => {
+        if (updErr) {
+          console.error('Update wallet error:', updErr);
+          return connection.rollback(() => res.status(500).json({ success: false, message: 'Error updating wallet', error: updErr.message }));
+        }
+
+        const insertHistoryQuery = `
+          INSERT INTO bonus_transfer_history 
+            (userId, amount, bonus_balance_before, bonus_balance_after, wallet_balance_before, wallet_balance_after)
+          VALUES (?, ?, ?, ?, ?, ?)
+        `;
+        connection.query(insertHistoryQuery, [userId, amountNum, bonusBefore, bonusAfter, walletBefore, walletAfter], (histErr) => {
+          if (histErr) {
+            console.error('Insert history error:', histErr);
+            return connection.rollback(() => res.status(500).json({ success: false, message: 'Error saving history', error: histErr.message }));
+          }
+
+          connection.commit(commitErr => {
+            if (commitErr) {
+              console.error('Commit error:', commitErr);
+              return connection.rollback(() => res.status(500).json({ success: false, message: 'Commit failed', error: commitErr.message }));
+            }
+
+            return res.json({
+              success: true,
+              message: 'Bonus transferred successfully',
+              data: {
+                amount: amountNum,
+                bonus_balance_before: bonusBefore,
+                bonus_balance_after: bonusAfter,
+                wallet_balance_before: walletBefore,
+                wallet_balance_after: walletAfter
+              }
+            });
+          });
+        });
+      });
+    });
+  });
+});
+
+
+
+//================ Get Bonus Transfer History =================
+router.get('/bonus-transfer-history/:userId', (req, res) => {
+  const { userId } = req.params;
+  const page = parseInt(req.query.page) || 1;
+  const limit = parseInt(req.query.limit) || 20;
+  const offset = (page - 1) * limit;
+
+  // 1. Count total records
+  const countQuery = `
+    SELECT COUNT(*) as total 
+    FROM bonus_transfer_history 
+    WHERE userId = ?
+  `;
+  connection.query(countQuery, [userId], (countErr, countResult) => {
+    if (countErr) {
+      console.error('Count history error:', countErr);
+      return res.status(500).json({
+        success: false,
+        message: "Error counting history",
+        error: countErr.message
+      });
+    }
+
+    const totalRecords = countResult[0].total;
+    const totalPages = Math.ceil(totalRecords / limit);
+
+    // 2. Fetch paginated records
+    const historyQuery = `
+      SELECT id, amount, 
+             bonus_balance_before, bonus_balance_after, 
+             wallet_balance_before, wallet_balance_after, 
+             created_at
+      FROM bonus_transfer_history 
+      WHERE userId = ?
+      ORDER BY created_at DESC
+      LIMIT ? OFFSET ?
+    `;
+    connection.query(historyQuery, [userId, limit, offset], (historyErr, historyResult) => {
+      if (historyErr) {
+        console.error('Fetch history error:', historyErr);
+        return res.status(500).json({
+          success: false,
+          message: "Error fetching history",
+          error: historyErr.message
+        });
+      }
+
+      res.json({
+        success: true,
+        message: "Bonus transfer history retrieved successfully",
+        pagination: {
+          total_records: totalRecords,
+          total_pages: totalPages,
+          current_page: page,
+          limit: limit
+        },
+        history: historyResult
+      });
+    });
+  });
+});
+
+
+
 //============================================================================
 // make the authentication middleware available for all routes in this file
 // This will ensure that all routes in this file require authentication
