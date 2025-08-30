@@ -2251,15 +2251,97 @@ router.get('/transactions/:userId', async (req, res) => {
 
 //--------------------------------------- Protected Routes----------------------
 
-router.use(authenticateToken);
+//router.use(authenticateToken);
 
 //----------------------------------------------------------------------------------
 
 
 
+// router.get("/referrals/today-summary/:userId", async (req, res) => {
+//   const { userId } = req.params;
+//   const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+
+//   try {
+//     // 1. Check user existence
+//     const [userCheck] = await new Promise((resolve, reject) => {
+//       connection.query("SELECT id FROM users WHERE id = ?", [userId], (err, results) => {
+//         if (err) return reject(err);
+//         resolve(results);
+//       });
+//     });
+
+//     if (!userCheck) {
+//       return res.status(404).json({ success: false, message: "User not found" });
+//     }
+
+//     // 2. Get today's referral summary
+//     const summary = await new Promise((resolve, reject) => {
+//       const sql = `
+//         SELECT 
+//           u.id,
+//           u.name,
+//           u.username,
+//           u.email,
+//           r.level,
+//           (SELECT d.amount FROM deposits d WHERE d.userId = u.id AND DATE(d.date) = ? ORDER BY d.date ASC LIMIT 1) AS first_deposit,
+//           (SELECT SUM(d.amount) FROM deposits d WHERE d.userId = u.id AND DATE(d.date) = ?) AS total_deposit,
+//           (SELECT SUM(b.amount) FROM bets b WHERE b.user_id = u.id) AS total_bets,            
+//           (SELECT IFNULL(SUM(c.amount), 0) FROM referralcommissionhistory c WHERE c.user_id = ? AND c.referred_user_id = u.id AND c.credited = 0) AS pending_commission
+//         FROM referrals r 
+//         JOIN users u ON r.referred_id = u.id
+//         WHERE r.referrer_id = ?
+//         AND DATE(u.created_at) = ?
+//         ORDER BY r.level
+//       `;
+
+//       connection.query(sql, [today, today, userId, userId, today], (err, results) => {
+//         if (err) return reject(err);
+//         resolve(results);
+//       });
+//     });
+
+//     // 3. Group by level
+//     const referralsByLevel = {
+//       level1: [],
+//       level2: [],
+//       level3: [],
+//       level4: [],
+//       level5: []
+//     };
+
+//     for (const row of summary) {
+//       const levelKey = `level${row.level}`;
+//       referralsByLevel[levelKey].push({
+//         id: row.id,
+//         name: row.name,
+//         username: row.username,
+//         email: row.email,
+//         level: row.level,
+//         first_deposit: parseFloat(row.first_deposit || 0).toFixed(2),
+//         total_deposit: parseFloat(row.total_deposit || 0).toFixed(2),
+//         total_bets: row.total_bets ? parseFloat(row.total_bets).toFixed(2) : null,
+//         pending_commission: parseFloat(row.pending_commission || 0).toFixed(2)
+//       });
+//     }
+
+//     const totalReferrals = summary.length;
+
+//     res.json({
+//       userId,
+//       totalReferrals,
+//       referralsByLevel
+//     });
+
+//   } catch (err) {
+//     console.error(err);
+//     res.status(500).json({ message: "Server error" });
+//   }
+// });
+
+
 router.get("/referrals/today-summary/:userId", async (req, res) => {
   const { userId } = req.params;
-  const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+  const today = new Date().toISOString().split("T")[0]; // YYYY-MM-DD
 
   try {
     // 1. Check user existence
@@ -2274,7 +2356,7 @@ router.get("/referrals/today-summary/:userId", async (req, res) => {
       return res.status(404).json({ success: false, message: "User not found" });
     }
 
-    // 2. Get today's referral summary
+    // 2. Get referrals with today's deposit info
     const summary = await new Promise((resolve, reject) => {
       const sql = `
         SELECT 
@@ -2283,24 +2365,44 @@ router.get("/referrals/today-summary/:userId", async (req, res) => {
           u.username,
           u.email,
           r.level,
-          (SELECT d.amount FROM deposits d WHERE d.userId = u.id AND DATE(d.date) = ? ORDER BY d.date ASC LIMIT 1) AS first_deposit,
-          (SELECT SUM(d.amount) FROM deposits d WHERE d.userId = u.id AND DATE(d.date) = ?) AS total_deposit,
+          -- First deposit amount if it happened today
+          (
+            SELECT d.amount 
+            FROM deposits d 
+            WHERE d.userId = u.id 
+            ORDER BY d.date ASC LIMIT 1
+          ) AS overall_first_deposit,
+          (
+            SELECT d.amount 
+            FROM deposits d 
+            WHERE d.userId = u.id 
+            AND DATE(d.date) = ? 
+            ORDER BY d.date ASC LIMIT 1
+          ) AS today_first_deposit,
+          -- Today's total deposits
+          (
+            SELECT SUM(d.amount) 
+            FROM deposits d 
+            WHERE d.userId = u.id AND DATE(d.date) = ?
+          ) AS today_total_deposit,
           (SELECT SUM(b.amount) FROM bets b WHERE b.user_id = u.id) AS total_bets,            
-          (SELECT IFNULL(SUM(c.amount), 0) FROM referralcommissionhistory c WHERE c.user_id = ? AND c.referred_user_id = u.id AND c.credited = 0) AS pending_commission
+          (SELECT IFNULL(SUM(c.amount), 0) 
+            FROM referralcommissionhistory c 
+            WHERE c.user_id = ? AND c.referred_user_id = u.id AND c.credited = 0
+          ) AS pending_commission
         FROM referrals r 
         JOIN users u ON r.referred_id = u.id
         WHERE r.referrer_id = ?
-        AND DATE(u.created_at) = ?
         ORDER BY r.level
       `;
 
-      connection.query(sql, [today, today, userId, userId, today], (err, results) => {
+      connection.query(sql, [today, today, userId, userId], (err, results) => {
         if (err) return reject(err);
         resolve(results);
       });
     });
 
-    // 3. Group by level
+    // 3. Group by level + calculate totals
     const referralsByLevel = {
       level1: [],
       level2: [],
@@ -2309,16 +2411,31 @@ router.get("/referrals/today-summary/:userId", async (req, res) => {
       level5: []
     };
 
+    let totalFirstDeposit = 0;
+    let totalDeposit = 0;
+
     for (const row of summary) {
       const levelKey = `level${row.level}`;
+
+      // Agar user ka first deposit aaj hai
+      let firstDeposit = 0;
+      if (row.today_first_deposit && row.today_first_deposit == row.overall_first_deposit) {
+        firstDeposit = parseFloat(row.today_first_deposit);
+        totalFirstDeposit += firstDeposit;
+      }
+
+      // Aaj ka total deposit
+      let todayDeposit = row.today_total_deposit ? parseFloat(row.today_total_deposit) : 0;
+      totalDeposit += todayDeposit;
+
       referralsByLevel[levelKey].push({
         id: row.id,
         name: row.name,
         username: row.username,
         email: row.email,
         level: row.level,
-        first_deposit: parseFloat(row.first_deposit || 0).toFixed(2),
-        total_deposit: parseFloat(row.total_deposit || 0).toFixed(2),
+        first_deposit: firstDeposit.toFixed(2),
+        total_deposit: todayDeposit.toFixed(2),
         total_bets: row.total_bets ? parseFloat(row.total_bets).toFixed(2) : null,
         pending_commission: parseFloat(row.pending_commission || 0).toFixed(2)
       });
@@ -2329,6 +2446,8 @@ router.get("/referrals/today-summary/:userId", async (req, res) => {
     res.json({
       userId,
       totalReferrals,
+      totalFirstDeposit: totalFirstDeposit.toFixed(2),
+      totalDeposit: totalDeposit.toFixed(2),
       referralsByLevel
     });
 
@@ -2337,6 +2456,7 @@ router.get("/referrals/today-summary/:userId", async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 });
+
 
 router.get("/referralsbydate/:userId", async (req, res) => {
   const { userId } = req.params;

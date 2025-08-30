@@ -779,17 +779,73 @@ router.get('/user/:userId', async (req, res) => {
 
 
 
-// ================= Add comment to query (user/admin) UPDATED===============
+// // ================= Add comment to query (user/admin) UPDATED===============
+// router.post('/:queryId/comment', async (req, res) => {
+//     try {
+//         const { queryId } = req.params;
+//         const { comment, is_admin } = req.body;
+
+//         if (!comment || comment.trim() === "") {
+//             return res.status(400).json({ success: false, message: "Comment is required" });
+//         }
+
+//           // Step 1: Query exist & status check
+//         const checkQuery = "SELECT id, status FROM user_queries WHERE id = ?";
+//         connection.query(checkQuery, [queryId], (checkErr, checkResults) => {
+//             if (checkErr || checkResults.length === 0) {
+//                 return res.status(404).json({ success: false, message: "Query not found" });
+//             }
+
+//             //  Status closed check
+//             if (checkResults[0].status === "closed") {
+//                 return res.status(403).json({
+//                     success: false,
+//                     message: "This query is closed. No more comments allowed."
+//                 });
+//             }
+
+
+//             // Insert comments
+//             const insertQuery = `
+//                 INSERT INTO query_comments 
+//                 (query_id, comment, admin_comment) 
+//                 VALUES (?, ?, ?)
+//             `;
+//             connection.query(insertQuery, [queryId, comment, !!is_admin], (err, results) => {
+//                 if (err) {
+//                     return res.status(500).json({ success: false, message: "Error adding comment" });
+//                 }
+
+//                 res.json({
+//                     success: true,
+//                     message: "Comment added successfully",
+//                     data: {
+//                         id: results.insertId,
+//                         query_id: queryId,
+//                         comment,
+//                         role: !!is_admin ? "admin" : "user",
+//                         created_at: new Date()
+//                     }
+//                 });
+//             });
+//         });
+//     } catch (error) {
+//         res.status(500).json({ success: false, message: "Internal server error" });
+//     }
+// });
+
+
+// ================= Add comment to query (user/admin) UPDATED WITH IMAGE ===============
 router.post('/:queryId/comment', async (req, res) => {
     try {
         const { queryId } = req.params;
-        const { comment, is_admin } = req.body;
+        const { comment, is_admin, image } = req.body; //
 
-        if (!comment || comment.trim() === "") {
-            return res.status(400).json({ success: false, message: "Comment is required" });
+        if ((!comment || comment.trim() === "") && (!image || image.trim() === "")) {
+            return res.status(400).json({ success: false, message: "Comment or image is required" });
         }
 
-          // Step 1: Query exist & status check
+        // Step 1: Query exist & status check
         const checkQuery = "SELECT id, status FROM user_queries WHERE id = ?";
         connection.query(checkQuery, [queryId], (checkErr, checkResults) => {
             if (checkErr || checkResults.length === 0) {
@@ -804,14 +860,13 @@ router.post('/:queryId/comment', async (req, res) => {
                 });
             }
 
-
-            // Insert comments
+            // Insert comments (with image)
             const insertQuery = `
                 INSERT INTO query_comments 
-                (query_id, comment, admin_comment) 
-                VALUES (?, ?, ?)
+                (query_id, comment, admin_comment, image) 
+                VALUES (?, ?, ?, ?)
             `;
-            connection.query(insertQuery, [queryId, comment, !!is_admin], (err, results) => {
+            connection.query(insertQuery, [queryId, comment || null, !!is_admin, image || null], (err, results) => {
                 if (err) {
                     return res.status(500).json({ success: false, message: "Error adding comment" });
                 }
@@ -822,7 +877,8 @@ router.post('/:queryId/comment', async (req, res) => {
                     data: {
                         id: results.insertId,
                         query_id: queryId,
-                        comment,
+                        comment: comment || null,
+                        image: image || null,
                         role: !!is_admin ? "admin" : "user",
                         created_at: new Date()
                     }
@@ -833,6 +889,7 @@ router.post('/:queryId/comment', async (req, res) => {
         res.status(500).json({ success: false, message: "Internal server error" });
     }
 });
+
 
 
 
@@ -847,7 +904,7 @@ router.get('/:queryId', async (req, res) => {
             if (queryResults.length === 0) return res.status(404).json({ success: false, message: "Query not found" });
 
             const commentQuery = `
-                SELECT id, query_id, comment, admin_comment, created_at
+                SELECT id, query_id, comment,image,admin_comment, created_at
                 FROM query_comments 
                 WHERE query_id = ? 
                 ORDER BY created_at ASC
@@ -858,6 +915,7 @@ router.get('/:queryId', async (req, res) => {
                 const formattedTimeline = comments.map(c => ({
                     id: c.id,
                     comment: c.comment,
+                    image: c.image,
                     role: c.admin_comment ? "admin" : "user",
                     created_at: c.created_at
                 }));
