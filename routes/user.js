@@ -2564,28 +2564,174 @@ const yesterdayStr = yesterday.toLocaleDateString('en-CA');
 // });
 
 
+
+// router.get("/referralsbydate/:userId", async (req, res) => {
+//   const { userId } = req.params;
+//   const { dateType } = req.query;
+
+//   // Date range logic
+//   const getDateRange = (type) => {
+//     let startDate, endDate;
+
+//     switch (type) {
+//       case "today":
+//         startDate = moment().startOf("day").format("YYYY-MM-DD");
+//         endDate = moment().endOf("day").format("YYYY-MM-DD");
+//         break;
+
+//       case "yesterday":
+//         startDate = moment().subtract(1, "days").startOf("day").format("YYYY-MM-DD");
+//         endDate = moment().subtract(1, "days").endOf("day").format("YYYY-MM-DD");
+//         break;
+
+//       case "lastMonth":
+//         startDate = moment().subtract(30, "days").format("YYYY-MM-DD");
+//         endDate = moment().format("YYYY-MM-DD");
+//         break;
+
+//       default:
+//         startDate = null;
+//         endDate = null;
+//     }
+
+//     return { startDate, endDate };
+//   };
+
+//   const { startDate, endDate } = getDateRange(dateType);
+
+//   try {
+//     const referrals = await new Promise((resolve, reject) => {
+//       let sql = `
+//         SELECT 
+//           u.id,
+//           u.name,
+//           u.username,
+//           u.email,
+//           u.created_at,
+//           r.level,
+//           (SELECT d.amount FROM deposits d WHERE d.userId = u.id ORDER BY d.date ASC LIMIT 1) AS overall_first_deposit,
+//           (
+//             SELECT d.amount 
+//             FROM deposits d 
+//             WHERE d.userId = u.id 
+//               ${startDate && endDate ? `AND DATE(d.date) BETWEEN ? AND ?` : ""}
+//             ORDER BY d.date ASC LIMIT 1
+//           ) AS range_first_deposit,
+//           (
+//             SELECT SUM(d.amount) 
+//             FROM deposits d 
+//             WHERE d.userId = u.id
+//               ${startDate && endDate ? `AND DATE(d.date) BETWEEN ? AND ?` : ""}
+//           ) AS range_total_deposit,
+//           (SELECT SUM(b.amount) FROM bets b WHERE b.user_id = u.id) AS total_bets,
+//           (SELECT IFNULL(SUM(c.amount), 0) 
+//            FROM referralcommissionhistory c 
+//            WHERE c.user_id = ? AND c.referred_user_id = u.id AND c.credited = 0
+//           ) AS pending_commission
+//         FROM referrals r 
+//         JOIN users u ON r.referred_id = u.id 
+//         WHERE r.referrer_id = ?
+//         ${startDate && endDate ? `AND DATE(u.created_at) BETWEEN ? AND ?` : ""}
+//         ORDER BY r.level
+//       `;
+
+//       const params = [];
+//       if (startDate && endDate) {
+//         params.push(startDate, endDate); // for range_first_deposit
+//         params.push(startDate, endDate); // for range_total_deposit
+//       }
+//       params.push(userId, userId); // pending_commission + referrer_id
+//       if (startDate && endDate) {
+//         params.push(startDate, endDate); // for u.created_at filter
+//       }
+
+//       connection.query(sql, params, (err, results) => {
+//         if (err) return reject(err);
+//         resolve(results);
+//       });
+//     });
+
+//     // Totals & Grouping
+//     const referralsByLevel = { level1: [], level2: [], level3: [], level4: [], level5: [] };
+
+//     let totalFirstDeposit = 0;
+//     let totalDeposit = 0;
+//     let firstDepositorsCount = 0;
+//     let totalReferrals = 0;
+
+//     for (const row of referrals) {
+//       const levelKey = `level${row.level}`;
+//       totalReferrals++; // ab SQL already filter kar raha hai
+
+//       // check if this referral's first deposit falls in this range
+//       let firstDeposit = 0;
+//       if (row.range_first_deposit && row.range_first_deposit == row.overall_first_deposit) {
+//         firstDeposit = parseFloat(row.range_first_deposit);
+//         totalFirstDeposit += firstDeposit;
+//         firstDepositorsCount++;
+//       }
+
+//       let rangeDeposit = row.range_total_deposit ? parseFloat(row.range_total_deposit) : 0;
+//       totalDeposit += rangeDeposit;
+
+//       referralsByLevel[levelKey].push({
+//         id: row.id,
+//         name: row.name,
+//         username: row.username,
+//         email: row.email,
+//         level: row.level,
+//         first_deposit: firstDeposit.toFixed(2),
+//         total_deposit: rangeDeposit.toFixed(2),
+//         total_bets: row.total_bets ? parseFloat(row.total_bets).toFixed(2) : null,
+//         pending_commission: parseFloat(row.pending_commission || 0).toFixed(2)
+//       });
+//     }
+
+//     res.json({
+//       userId,
+//       dateType: dateType || "all",
+//       dateRange: startDate ? { startDate, endDate } : "All Time",
+//       totalReferrals,
+//       totalFirstDeposit: totalFirstDeposit.toFixed(2),
+//       totalDeposit: totalDeposit.toFixed(2),
+//       firstDepositorsCount,
+//       referralsByLevel
+//     });
+
+//   } catch (err) {
+//     console.error(err);
+//     res.status(500).json({ message: "Server error" });
+//   }
+// });
+
 router.get("/referralsbydate/:userId", async (req, res) => {
   const { userId } = req.params;
   const { dateType } = req.query;
 
-  // Date range logic
+  // Updated date range logic
   const getDateRange = (type) => {
     let startDate, endDate;
 
     switch (type) {
       case "today":
-        startDate = moment().startOf("day").format("YYYY-MM-DD");
-        endDate = moment().endOf("day").format("YYYY-MM-DD");
+        const today = new Date();
+        startDate = today.toLocaleDateString("en-CA");
+        endDate = today.toLocaleDateString("en-CA");
         break;
 
       case "yesterday":
-        startDate = moment().subtract(1, "days").startOf("day").format("YYYY-MM-DD");
-        endDate = moment().subtract(1, "days").endOf("day").format("YYYY-MM-DD");
+        const yesterday = new Date();
+        yesterday.setDate(yesterday.getDate() - 1);
+        startDate = yesterday.toLocaleDateString("en-CA");
+        endDate = yesterday.toLocaleDateString("en-CA");
         break;
 
       case "lastMonth":
-        startDate = moment().subtract(30, "days").format("YYYY-MM-DD");
-        endDate = moment().format("YYYY-MM-DD");
+        const endDateMoment = new Date();
+        const startDateMoment = new Date();
+        startDateMoment.setDate(startDateMoment.getDate() - 30);
+        startDate = startDateMoment.toLocaleDateString("en-CA");
+        endDate = endDateMoment.toLocaleDateString("en-CA");
         break;
 
       default:
@@ -2599,6 +2745,19 @@ router.get("/referralsbydate/:userId", async (req, res) => {
   const { startDate, endDate } = getDateRange(dateType);
 
   try {
+    // User check
+    const [userCheck] = await new Promise((resolve, reject) => {
+      connection.query("SELECT id FROM users WHERE id = ?", [userId], (err, results) => {
+        if (err) return reject(err);
+        resolve(results);
+      });
+    });
+
+    if (!userCheck) {
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
+
+    // ================= Referrals detail query =================
     const referrals = await new Promise((resolve, reject) => {
       let sql = `
         SELECT 
@@ -2613,7 +2772,7 @@ router.get("/referralsbydate/:userId", async (req, res) => {
             SELECT d.amount 
             FROM deposits d 
             WHERE d.userId = u.id 
-              ${startDate && endDate ? `AND DATE(d.date) BETWEEN ? AND ?` : ""}
+              ${startDate && endDate ? `AND DATE(d.date) = ?` : ""}
             ORDER BY d.date ASC LIMIT 1
           ) AS range_first_deposit,
           (
@@ -2622,7 +2781,12 @@ router.get("/referralsbydate/:userId", async (req, res) => {
             WHERE d.userId = u.id
               ${startDate && endDate ? `AND DATE(d.date) BETWEEN ? AND ?` : ""}
           ) AS range_total_deposit,
-          (SELECT SUM(b.amount) FROM bets b WHERE b.user_id = u.id) AS total_bets,
+          (
+            SELECT SUM(b.amount) 
+            FROM bets b 
+            WHERE b.user_id = u.id
+              ${startDate && endDate ? `AND DATE(b.placed_at) BETWEEN ? AND ?` : ""}
+          ) AS range_total_bets,
           (SELECT IFNULL(SUM(c.amount), 0) 
            FROM referralcommissionhistory c 
            WHERE c.user_id = ? AND c.referred_user_id = u.id AND c.credited = 0
@@ -2635,10 +2799,11 @@ router.get("/referralsbydate/:userId", async (req, res) => {
 
       const params = [];
       if (startDate && endDate) {
-        params.push(startDate, endDate); // for range_first_deposit
+        params.push(startDate); // for range_first_deposit
         params.push(startDate, endDate); // for range_total_deposit
+        params.push(startDate, endDate); // for range_total_bets
       }
-      params.push(userId, userId);
+      params.push(userId, userId); // pending_commission + referrer_id
 
       connection.query(sql, params, (err, results) => {
         if (err) return reject(err);
@@ -2646,23 +2811,68 @@ router.get("/referralsbydate/:userId", async (req, res) => {
       });
     });
 
-    // Totals & Grouping
+    // ================= Direct & Team subordinate counts =================
+    const { directSubordinates, teamSubordinates } = await new Promise((resolve, reject) => {
+      let sqlDirect = `
+        SELECT COUNT(u.id) AS directSubordinates
+        FROM referrals r
+        JOIN users u ON r.referred_id = u.id
+        WHERE r.referrer_id = ?
+          AND r.level = 1
+          ${startDate && endDate ? "AND DATE(u.created_at) BETWEEN ? AND ?" : ""}
+      `;
+
+      let sqlTeam = `
+        SELECT COUNT(u.id) AS teamSubordinates
+        FROM referrals r
+        JOIN users u ON r.referred_id = u.id
+        WHERE r.referrer_id = ? AND  r.level > 1
+          ${startDate && endDate ? "AND DATE(u.created_at) BETWEEN ? AND ?" : ""}
+      `;
+
+      let paramsDirect = [userId];
+      let paramsTeam = [userId];
+
+      if (startDate && endDate) {
+        paramsDirect.push(startDate, endDate);
+        paramsTeam.push(startDate, endDate);
+      }
+
+      connection.query(sqlDirect, paramsDirect, (err, directRes) => {
+        if (err) return reject(err);
+        connection.query(sqlTeam, paramsTeam, (err2, teamRes) => {
+          if (err2) return reject(err2);
+          resolve({
+            directSubordinates: directRes[0]?.directSubordinates || 0,
+            teamSubordinates: teamRes[0]?.teamSubordinates || 0,
+          });
+        });
+      });
+    });
+
+    // ================= Totals & Grouping =================
     const referralsByLevel = { level1: [], level2: [], level3: [], level4: [], level5: [] };
 
     let totalFirstDeposit = 0;
     let totalDeposit = 0;
+    let totalBets = 0;
     let firstDepositorsCount = 0;
     let totalReferrals = 0;
 
     for (const row of referrals) {
       const levelKey = `level${row.level}`;
 
-      // count referrals only if created within date range
-      if (!startDate || (row.created_at >= startDate && row.created_at <= endDate)) {
+      // Count referrals by date
+      if (startDate && endDate) {
+        if (row.created_at && new Date(row.created_at).toLocaleDateString("en-CA") >= startDate &&
+            new Date(row.created_at).toLocaleDateString("en-CA") <= endDate) {
+          totalReferrals++;
+        }
+      } else {
         totalReferrals++;
       }
 
-      // check if this referral's first deposit falls in this range
+      // First deposit check
       let firstDeposit = 0;
       if (row.range_first_deposit && row.range_first_deposit == row.overall_first_deposit) {
         firstDeposit = parseFloat(row.range_first_deposit);
@@ -2670,8 +2880,13 @@ router.get("/referralsbydate/:userId", async (req, res) => {
         firstDepositorsCount++;
       }
 
+      // Total deposit
       let rangeDeposit = row.range_total_deposit ? parseFloat(row.range_total_deposit) : 0;
       totalDeposit += rangeDeposit;
+
+      // Total bets (DATE FILTERED)
+      let rangeBets = row.range_total_bets ? parseFloat(row.range_total_bets) : 0;
+      totalBets += rangeBets;
 
       referralsByLevel[levelKey].push({
         id: row.id,
@@ -2681,27 +2896,34 @@ router.get("/referralsbydate/:userId", async (req, res) => {
         level: row.level,
         first_deposit: firstDeposit.toFixed(2),
         total_deposit: rangeDeposit.toFixed(2),
-        total_bets: row.total_bets ? parseFloat(row.total_bets).toFixed(2) : null,
-        pending_commission: parseFloat(row.pending_commission || 0).toFixed(2)
+        total_bets: rangeBets.toFixed(2),
+        pending_commission: parseFloat(row.pending_commission || 0).toFixed(2),
       });
     }
 
+    // ================= Response =================
     res.json({
+      date: startDate || "All Time",
       userId,
       dateType: dateType || "all",
       dateRange: startDate ? { startDate, endDate } : "All Time",
       totalReferrals,
       totalFirstDeposit: totalFirstDeposit.toFixed(2),
       totalDeposit: totalDeposit.toFixed(2),
+      totalBets: totalBets.toFixed(2), // ✅ DATE FILTERED total bets
       firstDepositorsCount,
-      referralsByLevel
+      directSubordinates,
+      teamSubordinates,
+      referralsByLevel,
     });
-
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Server error" });
   }
 });
+
+
+
 
 
 
