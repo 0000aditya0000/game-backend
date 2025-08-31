@@ -724,15 +724,15 @@ router.get('/report/transactions', async (req, res) => {
         d.userId,
         d.amount,
         d.cryptoname,
-        d.created_at AS date,
+        d.date AS date,
         u.name,
         u.email,
         u.phone
       FROM deposits d
       LEFT JOIN users u ON d.userId = u.id
       WHERE d.cryptoname = 'INR'
-        AND d.created_at >= ? AND d.created_at <= ?
-      ORDER BY d.created_at DESC
+        AND d.date >= ? AND d.date <= ?
+      ORDER BY d.date DESC
     `;
 
     // --- WITHDRAWAL QUERY (with phone) ---
