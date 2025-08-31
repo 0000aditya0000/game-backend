@@ -2346,9 +2346,9 @@ router.get('/transactions/:userId', async (req, res) => {
 router.get("/referrals/today-summary/:userId", async (req, res) => {
   const { userId } = req.params;
 
-  const yesterday = new Date();
-  yesterday.setDate(yesterday.getDate() - 1);
-  const yesterdayStr = yesterday.toISOString().split("T")[0]; // YYYY-MM-DD
+const yesterday = new Date();
+yesterday.setDate(yesterday.getDate() - 1);
+const yesterdayStr = yesterday.toLocaleDateString('en-CA');
 
   try {
     // 1. User check
@@ -2421,10 +2421,13 @@ router.get("/referrals/today-summary/:userId", async (req, res) => {
       const levelKey = `level${row.level}`;
 
       //  count only referrals created yesterday
-      if (row.created_at && row.created_at.toISOString().split("T")[0] === yesterdayStr) {
-        totalReferrals++;
-      }
-
+     if (
+  row.created_at &&
+  new Date(row.created_at).toLocaleDateString('en-CA') === yesterdayStr
+) {
+  totalReferrals++;
+}
+  
       //  first deposit check
       let firstDeposit = 0;
       if (row.yesterday_first_deposit && row.yesterday_first_deposit == row.overall_first_deposit) {
@@ -2466,6 +2469,7 @@ router.get("/referrals/today-summary/:userId", async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 });
+
 
 
 
@@ -3317,11 +3321,11 @@ router.get('/pending-commissions/:userId', async (req, res) => {
     }
 
     const pendingCommissionsQuery = `
-            SELECT cryptoname, SUM(amount) as pending_amount, COUNT(*) as commission_count
-            FROM referralcommissionhistory
-            WHERE user_id = ? AND credited = FALSE
-            GROUP BY cryptoname
-        `;
+  SELECT SUM(amount) AS total_amount
+  FROM referralcommissionhistory
+  WHERE user_id = ?
+    AND DATE(created_at) = DATE(DATE_SUB(NOW(), INTERVAL 1 DAY))
+`;
     const pendingCommissions = await new Promise((resolve, reject) => {
       connection.query(pendingCommissionsQuery, [userId], (err, results) => {
         if (err) return reject(err);

@@ -11,8 +11,21 @@ const authenticateToken = require('../middleware/authenticateToken');
 router.get('/report/today-recharge-summary', async (req, res) => {
   try {
     // Get today's start and end time
-    const start = moment().startOf('day').format('YYYY-MM-DD HH:mm:ss'); // 00:00:00
-    const end = moment().endOf('day').format('YYYY-MM-DD HH:mm:ss');     // 23:59:59
+    // const start = moment().startOf('day').format('YYYY-MM-DD HH:mm:ss'); // 00:00:00
+    // const end = moment().endOf('day').format('YYYY-MM-DD HH:mm:ss');     // 23:59:59
+    const start1 = new Date();
+start1.setHours(0, 0, 0, 0);
+
+// End of day (23:59:59 IST)
+const end1 = new Date();
+end1.setHours(23, 59, 59, 999);
+
+// Format to MySQL DATETIME string (YYYY-MM-DD HH:mm:ss)
+const formatDate = (d) =>
+  d.toISOString().slice(0, 19).replace('T', ' ');
+
+const start = formatDate(start1);
+const end = formatDate(end1);
 
     const query = `
       SELECT recharge_amount as amount
