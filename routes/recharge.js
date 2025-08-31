@@ -31,7 +31,6 @@ const end = formatDate(end1);
       SELECT recharge_amount as amount
       FROM recharge
       WHERE recharge_status = 'success'
-        AND recharge_type = 'INR'
         AND date BETWEEN ? AND ?
     `;
 
