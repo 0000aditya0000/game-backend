@@ -1453,14 +1453,14 @@ router.get('/game-transactions/:userId', async (req, res) => {
         });
       }
 
-      // Query to get total transactions
+      // Query to get total transactions from both tables
       const countQuery = `
-        SELECT COUNT(*) as total 
-        FROM api_turnover 
-        WHERE login = ?
+        SELECT 
+          (SELECT COUNT(*) FROM api_turnover WHERE login = ?) as api_total,
+          (SELECT COUNT(*) FROM huidu_txn WHERE userid = ? AND bet_amount > 0) as huidu_total
       `; 
 
-      connection.query(countQuery, [userId], (countErr, countResult) => {
+      connection.query(countQuery, [userId, userId], (countErr, countResult) => {
         if (countErr) {
           console.error('Count query error:', countErr);
           return res.status(500).json({
@@ -1470,11 +1470,13 @@ router.get('/game-transactions/:userId', async (req, res) => {
           });
         }
 
-        const totalRecords = countResult[0].total;
+        const apiTotal = countResult[0].api_total;
+        const huiduTotal = countResult[0].huidu_total;
+        const totalRecords = apiTotal + huiduTotal;
         const totalPages = Math.ceil(totalRecords / limit);
 
-        // Query to get paginated transactions
-        const transactionQuery = `
+        // Query to get paginated transactions from api_turnover table
+        const apiTransactionQuery = `
           SELECT 
             id as transaction_id,
             cmd as transaction_type,
@@ -1495,32 +1497,79 @@ router.get('/game-transactions/:userId', async (req, res) => {
           LIMIT ? OFFSET ?
         `;
 
-        connection.query(transactionQuery, [userId, limit, offset], (txErr, txResult) => {
-          if (txErr) {
-            console.error('Transaction query error:', txErr);
+        // Query to get paginated transactions from huidu_txn table
+        const huiduTransactionQuery = `
+          SELECT 
+            id as transaction_id,
+            'game_bet' as transaction_type,
+            serial_number as sessionId,
+            bet_amount,
+            DATE(created_at) as bet_date,
+            game_uid as gameId,
+            win_amount as winning_amount,
+            created_at,
+            CASE
+              WHEN win_amount = 0 THEN 'lost'
+              ELSE 'won'
+            END as status
+          FROM huidu_txn 
+          WHERE userid = ? AND bet_amount > 0
+          ORDER BY created_at DESC
+          LIMIT ? OFFSET ?
+        `;
+
+        // Execute both queries
+        connection.query(apiTransactionQuery, [userId, limit, offset], (apiErr, apiResult) => {
+          if (apiErr) {
+            console.error('API transaction query error:', apiErr);
             return res.status(500).json({
               success: false,
-              message: "Error fetching transactions",
-              error: txErr.message
+              message: "Error fetching API transactions",
+              error: apiErr.message
             });
           }
-          // Format transaction amounts because they might be strings
-          const transactions = txResult.map(tx => ({
-            ...tx,
-            bet_amount: parseFloat(tx.bet_amount || 0),
-            winning_amount: parseFloat(tx.winning_amount || 0)
-          }));
 
-          res.json({
-            success: true,
-            message: "Game transactions retrieved successfully",
-            pagination: {
-              total_records: totalRecords,
-              total_pages: totalPages,
-              current_page: page,
-              limit: limit
-            },
-            transactions
+          connection.query(huiduTransactionQuery, [userId, limit, offset], (huiduErr, huiduResult) => {
+            if (huiduErr) {
+              console.error('Huidu transaction query error:', huiduErr);
+              return res.status(500).json({
+                success: false,
+                message: "Error fetching Huidu transactions",
+                error: huiduErr.message
+              });
+            }
+            
+            // Format API transaction amounts
+            const apiTransactions = apiResult.map(tx => ({
+              ...tx,
+              bet_amount: parseFloat(tx.bet_amount || 0),
+              winning_amount: parseFloat(tx.winning_amount || 0)
+            }));
+
+            // Format Huidu transaction amounts
+            const huiduTransactions = huiduResult.map(tx => ({
+              ...tx,
+              bet_amount: parseFloat(tx.bet_amount || 0),
+              winning_amount: parseFloat(tx.winning_amount || 0)
+            }));
+
+            // Combine both datasets and sort by created_at
+            const allTransactions = [...apiTransactions, ...huiduTransactions]
+              .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
+            res.json({
+              success: true,
+              message: "Game transactions retrieved successfully",
+              pagination: {
+                total_records: totalRecords,
+                total_pages: totalPages,
+                current_page: page,
+                limit: limit,
+                api_turnover_count: apiTotal,
+                huidu_txn_count: huiduTotal
+              },
+              transactions: allTransactions
+            });
           });
         });
       });
