@@ -3156,6 +3156,7 @@ router.get("/referralsbydate/:userId", async (req, res) => {
 
       referralsByLevel[levelKey].push({
         id: row.id,
+        user_id: row.user_id,
         name: row.name,
         username: row.username,
         email: row.email,
