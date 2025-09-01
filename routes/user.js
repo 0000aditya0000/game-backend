@@ -1028,8 +1028,8 @@ router.get('/report/transactions/:userId', async (req, res) => {
       FROM deposits d
       LEFT JOIN users u ON d.userId = u.id
       WHERE d.userId = ? AND d.cryptoname = 'INR'
-        AND d.created_at >= ? AND d.created_at <= ?
-      ORDER BY d.created_at DESC
+        AND d.date >= ? AND d.date <= ?
+      ORDER BY d.date DESC
     `;
 
     // --- WITHDRAWAL QUERY (with cryptoname = INR) ---
