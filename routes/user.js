@@ -2815,64 +2815,146 @@ router.get("/referralsbydate/:userId", async (req, res) => {
           u.username,
           u.email,
           u.created_at,
-          r.level,
-          (SELECT d.amount FROM deposits d WHERE d.userId = u.id ORDER BY d.date ASC LIMIT 1) AS overall_first_deposit,
-          (
-            SELECT d.amount 
-            FROM deposits d 
-            WHERE d.userId = u.id 
-              ${startDate && endDate ? `AND DATE(d.date) = ?` : ""}
-            ORDER BY d.date ASC LIMIT 1
-          ) AS range_first_deposit,
-          (
-            SELECT SUM(d.amount) 
-            FROM deposits d 
-            WHERE d.userId = u.id
-              ${startDate && endDate ? `AND DATE(d.date) BETWEEN ? AND ?` : ""}
-          ) AS range_total_deposit,
-          (
-            SELECT SUM(b.amount) 
-            FROM bets b 
-            WHERE b.user_id = u.id
-              ${startDate && endDate ? `AND DATE(b.placed_at) BETWEEN ? AND ?` : ""}
-          ) AS range_total_bets,
-          (
-            SELECT IFNULL(SUM(at.bet), 0)
-            FROM api_turnover at 
-            WHERE at.login = u.id
-              ${startDate && endDate ? `AND DATE(at.created_at) BETWEEN ? AND ?` : ""}
-          ) AS range_total_api_bets,
-          (
-            SELECT IFNULL(SUM(ht.bet_amount), 0)
-            FROM huidu_txn ht 
-            WHERE ht.userid = u.id AND ht.bet_amount > 0
-              ${startDate && endDate ? `AND DATE(ht.created_at) BETWEEN ? AND ?` : ""}
-          ) AS range_total_huidu_bets,
-          (SELECT IFNULL(SUM(c.amount), 0) 
-           FROM referralcommissionhistory c 
-           WHERE c.user_id = ? AND c.referred_user_id = u.id AND c.credited = 0
-          ) AS pending_commission
+          r.level
         FROM referrals r 
         JOIN users u ON r.referred_id = u.id 
         WHERE r.referrer_id = ?
         ORDER BY r.level
       `;
 
-      const params = [];
-      if (startDate && endDate) {
-        params.push(startDate); // for range_first_deposit
-        params.push(startDate, endDate); // for range_total_deposit
-        params.push(startDate, endDate); // for range_total_bets
-        params.push(startDate, endDate); // for range_total_api_bets
-        params.push(startDate, endDate); // for range_total_huidu_bets
-      }
-      params.push(userId, userId); // pending_commission + referrer_id
-
-      connection.query(sql, params, (err, results) => {
+      connection.query(sql, [userId], (err, results) => {
         if (err) return reject(err);
         resolve(results);
       });
     });
+
+    // ================= Batch fetch related data =================
+    if (referrals.length > 0) {
+      const referralIds = referrals.map(r => r.id);
+      
+      // Batch fetch deposits
+      const depositsQuery = `
+        SELECT 
+          userId,
+          MIN(CASE WHEN ${startDate && endDate ? 'DATE(date) = ?' : '1=1'} THEN amount END) as range_first_deposit,
+          SUM(CASE WHEN ${startDate && endDate ? 'DATE(date) BETWEEN ? AND ?' : '1=1'} THEN amount ELSE 0 END) as range_total_deposit
+        FROM deposits 
+        WHERE userId IN (${referralIds.map(() => '?').join(',')})
+        ${startDate && endDate ? 'AND DATE(date) BETWEEN ? AND ?' : ''}
+        GROUP BY userId
+      `;
+
+      const depositsParams = startDate && endDate 
+        ? [startDate, startDate, endDate, ...referralIds, startDate, endDate]
+        : [...referralIds];
+
+      const deposits = await new Promise((resolve, reject) => {
+        connection.query(depositsQuery, depositsParams, (err, results) => {
+          if (err) return reject(err);
+          resolve(results);
+        });
+      });
+
+      // Batch fetch bets
+      const betsQuery = `
+        SELECT 
+          user_id,
+          SUM(CASE WHEN ${startDate && endDate ? 'DATE(placed_at) BETWEEN ? AND ?' : '1=1'} THEN amount ELSE 0 END) as range_total_bets
+        FROM bets 
+        WHERE user_id IN (${referralIds.map(() => '?').join(',')})
+        ${startDate && endDate ? 'AND DATE(placed_at) BETWEEN ? AND ?' : ''}
+        GROUP BY user_id
+      `;
+
+      const betsParams = startDate && endDate 
+        ? [startDate, endDate, ...referralIds, startDate, endDate]
+        : [...referralIds];
+
+      const bets = await new Promise((resolve, reject) => {
+        connection.query(betsQuery, betsParams, (err, results) => {
+          if (err) return reject(err);
+          resolve(results);
+        });
+      });
+
+      // Batch fetch API turnover
+      const apiQuery = `
+        SELECT 
+          login,
+          SUM(CASE WHEN ${startDate && endDate ? 'DATE(created_at) BETWEEN ? AND ?' : '1=1'} THEN bet ELSE 0 END) as range_total_api_bets
+        FROM api_turnover 
+        WHERE login IN (${referralIds.map(() => '?').join(',')})
+        ${startDate && endDate ? 'AND DATE(created_at) BETWEEN ? AND ?' : ''}
+        GROUP BY login
+      `;
+
+      const apiParams = startDate && endDate 
+        ? [startDate, endDate, ...referralIds, startDate, endDate]
+        : [...referralIds];
+
+      const apiBets = await new Promise((resolve, reject) => {
+        connection.query(apiQuery, apiParams, (err, results) => {
+          if (err) return reject(err);
+          resolve(results);
+        });
+      });
+
+      // Batch fetch Huidu transactions
+      const huiduQuery = `
+        SELECT 
+          userid,
+          SUM(CASE WHEN ${startDate && endDate ? 'DATE(created_at) BETWEEN ? AND ?' : '1=1'} THEN bet_amount ELSE 0 END) as range_total_huidu_bets
+        FROM huidu_txn 
+        WHERE userid IN (${referralIds.map(() => '?').join(',')}) 
+        AND bet_amount > 0
+        ${startDate && endDate ? 'AND DATE(created_at) BETWEEN ? AND ?' : ''}
+        GROUP BY userid
+      `;
+
+      const huiduParams = startDate && endDate 
+        ? [startDate, endDate, ...referralIds, startDate, endDate]
+        : [...referralIds];
+
+      const huiduBets = await new Promise((resolve, reject) => {
+        connection.query(huiduQuery, huiduParams, (err, results) => {
+          if (err) return reject(err);
+          resolve(results);
+        });
+      });
+
+      // Batch fetch pending commissions
+      const commissionQuery = `
+        SELECT 
+          referred_user_id,
+          SUM(amount) as pending_commission
+        FROM referralcommissionhistory 
+        WHERE user_id = ? AND referred_user_id IN (${referralIds.map(() => '?').join(',')}) AND credited = 0
+        GROUP BY referred_user_id
+      `;
+
+      const commissions = await new Promise((resolve, reject) => {
+        connection.query(commissionQuery, [userId, ...referralIds], (err, results) => {
+          if (err) return reject(err);
+          resolve(results);
+        });
+      });
+
+      // Merge data
+      referrals.forEach(referral => {
+        const deposit = deposits.find(d => d.userId === referral.id);
+        const bet = bets.find(b => b.user_id === referral.id);
+        const apiBet = apiBets.find(a => a.login === referral.id);
+        const huiduBet = huiduBets.find(h => h.userid === referral.id);
+        const commission = commissions.find(c => c.referred_user_id === referral.id);
+
+        referral.range_first_deposit = deposit?.range_first_deposit || 0;
+        referral.range_total_deposit = deposit?.range_total_deposit || 0;
+        referral.range_total_bets = bet?.range_total_bets || 0;
+        referral.range_total_api_bets = apiBet?.range_total_api_bets || 0;
+        referral.range_total_huidu_bets = huiduBet?.range_total_huidu_bets || 0;
+        referral.pending_commission = commission?.pending_commission || 0;
+      });
+    }
 
     // ================= Direct & Team subordinate counts =================
     const { directSubordinates, teamSubordinates } = await new Promise((resolve, reject) => {
@@ -3019,22 +3101,123 @@ router.get("/referrals/:userId", async (req, res) => {
             u.username,
             u.email,
             DATE(u.created_at) AS join_date,
-            r.level,
-            (SELECT d.amount FROM deposits d WHERE d.userId = u.id ORDER BY d.date ASC LIMIT 1) AS first_deposit,
-            (SELECT SUM(d.amount) FROM deposits d WHERE d.userId = u.id) AS total_deposit,
-            (SELECT SUM(b.amount) FROM bets b WHERE b.user_id = u.id) AS total_bets,
-            (SELECT IFNULL(SUM(at.bet), 0) FROM api_turnover at WHERE at.login = u.id) AS total_api_bets,
-            (SELECT IFNULL(SUM(ht.bet_amount), 0) FROM huidu_txn ht WHERE ht.userid = u.id AND ht.bet_amount > 0) AS total_huidu_bets,
-            (SELECT IFNULL(SUM(c.amount), 0) FROM referralcommissionhistory c WHERE c.user_id = ? AND c.referred_user_id = u.id AND c.credited = 0 ) AS pending_commission
+            r.level
             FROM referrals r JOIN users u ON r.referred_id = u.id WHERE r.referrer_id = ? ORDER BY r.level
         `;
-      const [referrerId] = [req.params.userId];
 
-      connection.query(sql, [referrerId, referrerId], (err, results) => {
+      connection.query(sql, [userId], (err, results) => {
         if (err) return reject(err);
         resolve(results);
       });
     });
+
+    // Batch fetch related data if referrals exist
+    if (referrals.length > 0) {
+      const referralIds = referrals.map(r => r.id);
+      
+      // Batch fetch deposits
+      const depositsQuery = `
+        SELECT 
+          userId,
+          MIN(amount) as first_deposit,
+          SUM(amount) as total_deposit
+        FROM deposits 
+        WHERE userId IN (${referralIds.map(() => '?').join(',')})
+        GROUP BY userId
+      `;
+
+      const deposits = await new Promise((resolve, reject) => {
+        connection.query(depositsQuery, referralIds, (err, results) => {
+          if (err) return reject(err);
+          resolve(results);
+        });
+      });
+
+      // Batch fetch bets
+      const betsQuery = `
+        SELECT 
+          user_id,
+          SUM(amount) as total_bets
+        FROM bets 
+        WHERE user_id IN (${referralIds.map(() => '?').join(',')})
+        GROUP BY user_id
+      `;
+
+      const bets = await new Promise((resolve, reject) => {
+        connection.query(betsQuery, referralIds, (err, results) => {
+          if (err) return reject(err);
+          resolve(results);
+        });
+      });
+
+      // Batch fetch API turnover
+      const apiQuery = `
+        SELECT 
+          login,
+          SUM(bet) as total_api_bets
+        FROM api_turnover 
+        WHERE login IN (${referralIds.map(() => '?').join(',')})
+        GROUP BY login
+      `;
+
+      const apiBets = await new Promise((resolve, reject) => {
+        connection.query(apiQuery, referralIds, (err, results) => {
+          if (err) return reject(err);
+          resolve(results);
+        });
+      });
+
+      // Batch fetch Huidu transactions
+      const huiduQuery = `
+        SELECT 
+          userid,
+          SUM(bet_amount) as total_huidu_bets
+        FROM huidu_txn 
+        WHERE userid IN (${referralIds.map(() => '?').join(',')}) 
+        AND bet_amount > 0
+        GROUP BY userid
+      `;
+
+      const huiduBets = await new Promise((resolve, reject) => {
+        connection.query(huiduQuery, referralIds, (err, results) => {
+          if (err) return reject(err);
+          resolve(results);
+        });
+      });
+
+      // Batch fetch pending commissions
+      const commissionQuery = `
+        SELECT 
+          referred_user_id,
+          SUM(amount) as pending_commission
+        FROM referralcommissionhistory 
+        WHERE user_id = ? AND referred_user_id IN (${referralIds.map(() => '?').join(',')}) AND credited = 0
+        GROUP BY referred_user_id
+      `;
+
+      const commissions = await new Promise((resolve, reject) => {
+        connection.query(commissionQuery, [userId, ...referralIds], (err, results) => {
+          if (err) return reject(err);
+          resolve(results);
+        });
+      });
+
+      // Merge data
+      referrals.forEach(referral => {
+        const deposit = deposits.find(d => d.userId === referral.id);
+        const bet = bets.find(b => b.user_id === referral.id);
+        const apiBet = apiBets.find(a => a.login === referral.id);
+        const huiduBet = huiduBets.find(h => h.userid === referral.id);
+        const commission = commissions.find(c => c.referred_user_id === referral.id);
+
+        referral.first_deposit = deposit?.first_deposit || 0;
+        referral.total_deposit = deposit?.total_deposit || 0;
+        referral.total_bets = bet?.total_bets || 0;
+        referral.total_api_bets = apiBet?.total_api_bets || 0;
+        referral.total_huidu_bets = huiduBet?.total_huidu_bets || 0;
+        referral.pending_commission = commission?.pending_commission || 0;
+      });
+    }
 
     // Group referrals by level and calculate totals
     const referralsByLevel = {};
