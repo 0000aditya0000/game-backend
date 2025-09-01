@@ -2754,6 +2754,10 @@ const yesterdayStr = yesterday.toLocaleDateString('en-CA');
 // });
 
 router.get("/referralsbydate/:userId", async (req, res) => {
+  // Set timeout for this route to prevent 504 errors
+  req.setTimeout(300000); // 5 minutes
+  res.setTimeout(300000); // 5 minutes
+  
   const { userId } = req.params;
   const { dateType } = req.query;
 
@@ -2832,112 +2836,188 @@ router.get("/referralsbydate/:userId", async (req, res) => {
     if (referrals.length > 0) {
       const referralIds = referrals.map(r => r.id);
       
-      // Batch fetch deposits
-      const depositsQuery = `
-        SELECT 
-          userId,
-          MIN(CASE WHEN ${startDate && endDate ? 'DATE(date) = ?' : '1=1'} THEN amount END) as range_first_deposit,
-          SUM(CASE WHEN ${startDate && endDate ? 'DATE(date) BETWEEN ? AND ?' : '1=1'} THEN amount ELSE 0 END) as range_total_deposit
-        FROM deposits 
-        WHERE userId IN (${referralIds.map(() => '?').join(',')})
-        ${startDate && endDate ? 'AND DATE(date) BETWEEN ? AND ?' : ''}
-        GROUP BY userId
-      `;
+      // Limit batch size to prevent timeout (process in chunks of 1000)
+      const BATCH_SIZE = 1000;
+      const chunks = [];
+      for (let i = 0; i < referralIds.length; i += BATCH_SIZE) {
+        chunks.push(referralIds.slice(i, i + BATCH_SIZE));
+      }
 
-      const depositsParams = startDate && endDate 
-        ? [startDate, startDate, endDate, ...referralIds, startDate, endDate]
-        : [...referralIds];
+      // Process deposits in chunks
+      let allDeposits = [];
+      for (const chunk of chunks) {
+        let depositsQuery, depositsParams;
+        if (startDate && endDate) {
+          depositsQuery = `
+            SELECT 
+              userId,
+              MIN(CASE WHEN DATE(date) = ? THEN amount END) as range_first_deposit,
+              SUM(amount) as range_total_deposit
+            FROM deposits 
+            WHERE userId IN (${chunk.map(() => '?').join(',')})
+            AND DATE(date) BETWEEN ? AND ?
+            GROUP BY userId
+          `;
+          depositsParams = [startDate, ...chunk, startDate, endDate];
+        } else {
+          depositsQuery = `
+            SELECT 
+              userId,
+              MIN(amount) as range_first_deposit,
+              SUM(amount) as range_total_deposit
+            FROM deposits 
+            WHERE userId IN (${chunk.map(() => '?').join(',')})
+            GROUP BY userId
+          `;
+          depositsParams = [...chunk];
+        }
 
-      const deposits = await new Promise((resolve, reject) => {
-        connection.query(depositsQuery, depositsParams, (err, results) => {
-          if (err) return reject(err);
-          resolve(results);
+        const chunkDeposits = await new Promise((resolve, reject) => {
+          connection.query(depositsQuery, depositsParams, (err, results) => {
+            if (err) return reject(err);
+            resolve(results);
+          });
         });
-      });
+        allDeposits = allDeposits.concat(chunkDeposits);
+      }
 
-      // Batch fetch bets
-      const betsQuery = `
-        SELECT 
-          user_id,
-          SUM(CASE WHEN ${startDate && endDate ? 'DATE(placed_at) BETWEEN ? AND ?' : '1=1'} THEN amount ELSE 0 END) as range_total_bets
-        FROM bets 
-        WHERE user_id IN (${referralIds.map(() => '?').join(',')})
-        ${startDate && endDate ? 'AND DATE(placed_at) BETWEEN ? AND ?' : ''}
-        GROUP BY user_id
-      `;
+      // Process bets in chunks
+      let allBets = [];
+      for (const chunk of chunks) {
+        let betsQuery, betsParams;
+        if (startDate && endDate) {
+          betsQuery = `
+            SELECT 
+              user_id,
+              SUM(amount) as range_total_bets
+            FROM bets 
+            WHERE user_id IN (${chunk.map(() => '?').join(',')})
+            AND DATE(placed_at) BETWEEN ? AND ?
+            GROUP BY user_id
+          `;
+          betsParams = [...chunk, startDate, endDate];
+        } else {
+          betsQuery = `
+            SELECT 
+              user_id,
+              SUM(amount) as range_total_bets
+            FROM bets 
+            WHERE user_id IN (${chunk.map(() => '?').join(',')})
+            GROUP BY user_id
+          `;
+          betsParams = [...chunk];
+        }
 
-      const betsParams = startDate && endDate 
-        ? [startDate, endDate, ...referralIds, startDate, endDate]
-        : [...referralIds];
-
-      const bets = await new Promise((resolve, reject) => {
-        connection.query(betsQuery, betsParams, (err, results) => {
-          if (err) return reject(err);
-          resolve(results);
+        const chunkBets = await new Promise((resolve, reject) => {
+          connection.query(betsQuery, betsParams, (err, results) => {
+            if (err) return reject(err);
+            resolve(results);
+          });
         });
-      });
+        allBets = allBets.concat(chunkBets);
+      }
 
-      // Batch fetch API turnover
-      const apiQuery = `
-        SELECT 
-          login,
-          SUM(CASE WHEN ${startDate && endDate ? 'DATE(created_at) BETWEEN ? AND ?' : '1=1'} THEN bet ELSE 0 END) as range_total_api_bets
-        FROM api_turnover 
-        WHERE login IN (${referralIds.map(() => '?').join(',')})
-        ${startDate && endDate ? 'AND DATE(created_at) BETWEEN ? AND ?' : ''}
-        GROUP BY login
-      `;
+      // Process API turnover in chunks
+      let allApiBets = [];
+      for (const chunk of chunks) {
+        let apiQuery, apiParams;
+        if (startDate && endDate) {
+          apiQuery = `
+            SELECT 
+              login,
+              SUM(bet) as range_total_api_bets
+            FROM api_turnover 
+            WHERE login IN (${chunk.map(() => '?').join(',')})
+            AND DATE(created_at) BETWEEN ? AND ?
+            GROUP BY login
+          `;
+          apiParams = [...chunk, startDate, endDate];
+        } else {
+          apiQuery = `
+            SELECT 
+              login,
+              SUM(bet) as range_total_api_bets
+            FROM api_turnover 
+            WHERE login IN (${chunk.map(() => '?').join(',')})
+            GROUP BY login
+          `;
+          apiParams = [...chunk];
+        }
 
-      const apiParams = startDate && endDate 
-        ? [startDate, endDate, ...referralIds, startDate, endDate]
-        : [...referralIds];
-
-      const apiBets = await new Promise((resolve, reject) => {
-        connection.query(apiQuery, apiParams, (err, results) => {
-          if (err) return reject(err);
-          resolve(results);
+        const chunkApiBets = await new Promise((resolve, reject) => {
+          connection.query(apiQuery, apiParams, (err, results) => {
+            if (err) return reject(err);
+            resolve(results);
+          });
         });
-      });
+        allApiBets = allApiBets.concat(chunkApiBets);
+      }
 
-      // Batch fetch Huidu transactions
-      const huiduQuery = `
-        SELECT 
-          userid,
-          SUM(CASE WHEN ${startDate && endDate ? 'DATE(created_at) BETWEEN ? AND ?' : '1=1'} THEN bet_amount ELSE 0 END) as range_total_huidu_bets
-        FROM huidu_txn 
-        WHERE userid IN (${referralIds.map(() => '?').join(',')}) 
-        AND bet_amount > 0
-        ${startDate && endDate ? 'AND DATE(created_at) BETWEEN ? AND ?' : ''}
-        GROUP BY userid
-      `;
+      // Process Huidu transactions in chunks
+      let allHuiduBets = [];
+      for (const chunk of chunks) {
+        let huiduQuery, huiduParams;
+        if (startDate && endDate) {
+          huiduQuery = `
+            SELECT 
+              userid,
+              SUM(bet_amount) as range_total_huidu_bets
+            FROM huidu_txn 
+            WHERE userid IN (${chunk.map(() => '?').join(',')}) 
+            AND bet_amount > 0
+            AND DATE(created_at) BETWEEN ? AND ?
+            GROUP BY userid
+          `;
+          huiduParams = [...chunk, startDate, endDate];
+        } else {
+          huiduQuery = `
+            SELECT 
+              userid,
+              SUM(bet_amount) as range_total_huidu_bets
+            FROM huidu_txn 
+            WHERE userid IN (${chunk.map(() => '?').join(',')}) 
+            AND bet_amount > 0
+            GROUP BY userid
+          `;
+          huiduParams = [...chunk];
+        }
 
-      const huiduParams = startDate && endDate 
-        ? [startDate, endDate, ...referralIds, startDate, endDate]
-        : [...referralIds];
-
-      const huiduBets = await new Promise((resolve, reject) => {
-        connection.query(huiduQuery, huiduParams, (err, results) => {
-          if (err) return reject(err);
-          resolve(results);
+        const chunkHuiduBets = await new Promise((resolve, reject) => {
+          connection.query(huiduQuery, huiduParams, (err, results) => {
+            if (err) return reject(err);
+            resolve(results);
+          });
         });
-      });
+        allHuiduBets = allHuiduBets.concat(chunkHuiduBets);
+      }
 
-      // Batch fetch pending commissions
-      const commissionQuery = `
-        SELECT 
-          referred_user_id,
-          SUM(amount) as pending_commission
-        FROM referralcommissionhistory 
-        WHERE user_id = ? AND referred_user_id IN (${referralIds.map(() => '?').join(',')}) AND credited = 0
-        GROUP BY referred_user_id
-      `;
+      // Process commissions in chunks
+      let allCommissions = [];
+      for (const chunk of chunks) {
+        const commissionQuery = `
+          SELECT 
+            referred_user_id,
+            SUM(amount) as pending_commission
+          FROM referralcommissionhistory 
+          WHERE user_id = ? AND referred_user_id IN (${chunk.map(() => '?').join(',')}) AND credited = 0
+          GROUP BY referred_user_id
+        `;
 
-      const commissions = await new Promise((resolve, reject) => {
-        connection.query(commissionQuery, [userId, ...referralIds], (err, results) => {
-          if (err) return reject(err);
-          resolve(results);
+        const chunkCommissions = await new Promise((resolve, reject) => {
+          connection.query(commissionQuery, [userId, ...chunk], (err, results) => {
+            if (err) return reject(err);
+            resolve(results);
+          });
         });
-      });
+        allCommissions = allCommissions.concat(chunkCommissions);
+      }
+
+      // Use the accumulated results
+      const deposits = allDeposits;
+      const bets = allBets;
+      const apiBets = allApiBets;
+      const huiduBets = allHuiduBets;
+      const commissions = allCommissions;
 
       // Merge data
       referrals.forEach(referral => {
@@ -3089,6 +3169,10 @@ router.get("/referralsbydate/:userId", async (req, res) => {
 
 
 router.get("/referrals/:userId", async (req, res) => {
+  // Set timeout for this route to prevent 504 errors
+  req.setTimeout(300000); // 5 minutes
+  res.setTimeout(300000); // 5 minutes
+  
   const { userId } = req.params;
 
   try {
@@ -3115,92 +3199,126 @@ router.get("/referrals/:userId", async (req, res) => {
     if (referrals.length > 0) {
       const referralIds = referrals.map(r => r.id);
       
-      // Batch fetch deposits
-      const depositsQuery = `
-        SELECT 
-          userId,
-          MIN(amount) as first_deposit,
-          SUM(amount) as total_deposit
-        FROM deposits 
-        WHERE userId IN (${referralIds.map(() => '?').join(',')})
-        GROUP BY userId
-      `;
+      // Limit batch size to prevent timeout (process in chunks of 1000)
+      const BATCH_SIZE = 1000;
+      const chunks = [];
+      for (let i = 0; i < referralIds.length; i += BATCH_SIZE) {
+        chunks.push(referralIds.slice(i, i + BATCH_SIZE));
+      }
 
-      const deposits = await new Promise((resolve, reject) => {
-        connection.query(depositsQuery, referralIds, (err, results) => {
-          if (err) return reject(err);
-          resolve(results);
+      // Process deposits in chunks
+      let allDeposits = [];
+      for (const chunk of chunks) {
+        const depositsQuery = `
+          SELECT 
+            userId,
+            MIN(amount) as first_deposit,
+            SUM(amount) as total_deposit
+          FROM deposits 
+          WHERE userId IN (${chunk.map(() => '?').join(',')})
+          GROUP BY userId
+        `;
+
+        const chunkDeposits = await new Promise((resolve, reject) => {
+          connection.query(depositsQuery, chunk, (err, results) => {
+            if (err) return reject(err);
+            resolve(results);
+          });
         });
-      });
+        allDeposits = allDeposits.concat(chunkDeposits);
+      }
 
-      // Batch fetch bets
-      const betsQuery = `
-        SELECT 
-          user_id,
-          SUM(amount) as total_bets
-        FROM bets 
-        WHERE user_id IN (${referralIds.map(() => '?').join(',')})
-        GROUP BY user_id
-      `;
+      // Process bets in chunks
+      let allBets = [];
+      for (const chunk of chunks) {
+        const betsQuery = `
+          SELECT 
+            user_id,
+            SUM(amount) as total_bets
+          FROM bets 
+          WHERE user_id IN (${chunk.map(() => '?').join(',')})
+          GROUP BY user_id
+        `;
 
-      const bets = await new Promise((resolve, reject) => {
-        connection.query(betsQuery, referralIds, (err, results) => {
-          if (err) return reject(err);
-          resolve(results);
+        const chunkBets = await new Promise((resolve, reject) => {
+          connection.query(betsQuery, chunk, (err, results) => {
+            if (err) return reject(err);
+            resolve(results);
+          });
         });
-      });
+        allBets = allBets.concat(chunkBets);
+      }
 
-      // Batch fetch API turnover
-      const apiQuery = `
-        SELECT 
-          login,
-          SUM(bet) as total_api_bets
-        FROM api_turnover 
-        WHERE login IN (${referralIds.map(() => '?').join(',')})
-        GROUP BY login
-      `;
+      // Process API turnover in chunks
+      let allApiBets = [];
+      for (const chunk of chunks) {
+        const apiQuery = `
+          SELECT 
+            login,
+            SUM(bet) as total_api_bets
+          FROM api_turnover 
+          WHERE login IN (${chunk.map(() => '?').join(',')})
+          GROUP BY login
+        `;
 
-      const apiBets = await new Promise((resolve, reject) => {
-        connection.query(apiQuery, referralIds, (err, results) => {
-          if (err) return reject(err);
-          resolve(results);
+        const chunkApiBets = await new Promise((resolve, reject) => {
+          connection.query(apiQuery, chunk, (err, results) => {
+            if (err) return reject(err);
+            resolve(results);
+          });
         });
-      });
+        allApiBets = allApiBets.concat(chunkApiBets);
+      }
 
-      // Batch fetch Huidu transactions
-      const huiduQuery = `
-        SELECT 
-          userid,
-          SUM(bet_amount) as total_huidu_bets
-        FROM huidu_txn 
-        WHERE userid IN (${referralIds.map(() => '?').join(',')}) 
-        AND bet_amount > 0
-        GROUP BY userid
-      `;
+      // Process Huidu transactions in chunks
+      let allHuiduBets = [];
+      for (const chunk of chunks) {
+        const huiduQuery = `
+          SELECT 
+            userid,
+            SUM(bet_amount) as total_huidu_bets
+          FROM huidu_txn 
+          WHERE userid IN (${chunk.map(() => '?').join(',')}) 
+          AND bet_amount > 0
+          GROUP BY userid
+        `;
 
-      const huiduBets = await new Promise((resolve, reject) => {
-        connection.query(huiduQuery, referralIds, (err, results) => {
-          if (err) return reject(err);
-          resolve(results);
+        const chunkHuiduBets = await new Promise((resolve, reject) => {
+          connection.query(huiduQuery, chunk, (err, results) => {
+            if (err) return reject(err);
+            resolve(results);
+          });
         });
-      });
+        allHuiduBets = allHuiduBets.concat(chunkHuiduBets);
+      }
 
-      // Batch fetch pending commissions
-      const commissionQuery = `
-        SELECT 
-          referred_user_id,
-          SUM(amount) as pending_commission
-        FROM referralcommissionhistory 
-        WHERE user_id = ? AND referred_user_id IN (${referralIds.map(() => '?').join(',')}) AND credited = 0
-        GROUP BY referred_user_id
-      `;
+      // Process commissions in chunks
+      let allCommissions = [];
+      for (const chunk of chunks) {
+        const commissionQuery = `
+          SELECT 
+            referred_user_id,
+            SUM(amount) as pending_commission
+          FROM referralcommissionhistory 
+          WHERE user_id = ? AND referred_user_id IN (${chunk.map(() => '?').join(',')}) AND credited = 0
+          GROUP BY referred_user_id
+        `;
 
-      const commissions = await new Promise((resolve, reject) => {
-        connection.query(commissionQuery, [userId, ...referralIds], (err, results) => {
-          if (err) return reject(err);
-          resolve(results);
+        const chunkCommissions = await new Promise((resolve, reject) => {
+          connection.query(commissionQuery, [userId, ...chunk], (err, results) => {
+            if (err) return reject(err);
+            resolve(results);
+          });
         });
-      });
+        allCommissions = allCommissions.concat(chunkCommissions);
+      }
+
+      // Use the accumulated results
+      const deposits = allDeposits;
+      const bets = allBets;
+      const apiBets = allApiBets;
+      const huiduBets = allHuiduBets;
+      const commissions = allCommissions;
 
       // Merge data
       referrals.forEach(referral => {
