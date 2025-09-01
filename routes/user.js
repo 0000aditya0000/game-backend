@@ -3180,7 +3180,8 @@ router.get("/referrals/:userId", async (req, res) => {
     const referrals = await new Promise((resolve, reject) => {
       const sql = `
           SELECT 
-            u.id,
+            r.id as referral_id,
+            u.id as user_id,
             u.name,
             u.username,
             u.email,
@@ -3197,7 +3198,7 @@ router.get("/referrals/:userId", async (req, res) => {
 
     // Batch fetch related data if referrals exist
     if (referrals.length > 0) {
-      const referralIds = referrals.map(r => r.id);
+      const referralIds = referrals.map(r => r.user_id);
       
       // Limit batch size to prevent timeout (process in chunks of 1000)
       const BATCH_SIZE = 1000;
@@ -3322,11 +3323,11 @@ router.get("/referrals/:userId", async (req, res) => {
 
       // Merge data
       referrals.forEach(referral => {
-        const deposit = deposits.find(d => d.userId === referral.id);
-        const bet = bets.find(b => b.user_id === referral.id);
-        const apiBet = apiBets.find(a => a.login === referral.id);
-        const huiduBet = huiduBets.find(h => h.userid === referral.id);
-        const commission = commissions.find(c => c.referred_user_id === referral.id);
+        const deposit = deposits.find(d => d.userId === referral.user_id);
+        const bet = bets.find(b => b.user_id === referral.user_id);
+        const apiBet = apiBets.find(a => a.login === referral.user_id);
+        const huiduBet = huiduBets.find(h => h.userid === referral.user_id);
+        const commission = commissions.find(c => c.referred_user_id === referral.user_id);
 
         referral.first_deposit = deposit?.first_deposit || 0;
         referral.total_deposit = deposit?.total_deposit || 0;
@@ -3340,7 +3341,7 @@ router.get("/referrals/:userId", async (req, res) => {
       console.log('Debug - Sample referral data:', referrals.slice(0, 2));
       console.log('Debug - API bets sample:', apiBets.slice(0, 2));
       console.log('Debug - Huidu bets sample:', huiduBets.slice(0, 2));
-      console.log('Debug - Referral IDs sample:', referralIds.slice(0, 5));
+      console.log('Debug - User IDs sample:', referralIds.slice(0, 5));
       
       // Additional debug logging for raw data counts
       console.log('Debug - Raw data counts:');
