@@ -3061,15 +3061,7 @@ router.get("/referralsbydate/:userId", async (req, res) => {
         referral.range_total_huidu_bets = parseFloat(huiduBet?.range_total_huidu_bets || 0);
         referral.pending_commission = commission?.pending_commission || 0;
         
-        // Debug logging for first few referrals
-        if (referral.referral_id <= 3) {
-          console.log(`Debug - Referral ${referral.referral_id}:`);
-          console.log(`  User ID: ${referral.user_id}, String: ${userIdString}`);
-          console.log(`  Found API bet:`, apiBet ? 'Yes' : 'No', apiBet);
-          console.log(`  Found Huidu bet:`, huiduBet ? 'Yes' : 'No', huiduBet);
-          console.log(`  API bet amount:`, referral.range_total_api_bets);
-          console.log(`  Huidu bet amount:`, referral.range_total_huidu_bets);
-        }
+
       });
     }
 
@@ -3081,6 +3073,7 @@ router.get("/referralsbydate/:userId", async (req, res) => {
         JOIN users u ON r.referred_id = u.id
         WHERE r.referrer_id = ?
           AND r.level = 1
+          ${startDate && endDate ? "AND DATE(u.created_at) BETWEEN ? AND ?" : ""}
       `;
 
       let sqlTeam = `
@@ -3088,10 +3081,16 @@ router.get("/referralsbydate/:userId", async (req, res) => {
         FROM referrals r
         JOIN users u ON r.referred_id = u.id
         WHERE r.referrer_id = ? AND  r.level > 1
+          ${startDate && endDate ? "AND DATE(u.created_at) BETWEEN ? AND ?" : ""}
       `;
 
       let paramsDirect = [userId];
       let paramsTeam = [userId];
+
+      if (startDate && endDate) {
+        paramsDirect.push(startDate, endDate);
+        paramsTeam.push(startDate, endDate);
+      }
 
       connection.query(sqlDirect, paramsDirect, (err, directRes) => {
         if (err) return reject(err);
@@ -3120,8 +3119,15 @@ router.get("/referralsbydate/:userId", async (req, res) => {
     for (const row of referrals) {
       const levelKey = `level${row.level}`;
 
-      // Always count all referrals (date filter only applies to betting data, not referral count)
-      totalReferrals++;
+      // Count referrals by date (when they joined)
+      if (startDate && endDate) {
+        if (row.created_at && new Date(row.created_at).toLocaleDateString("en-CA") >= startDate &&
+            new Date(row.created_at).toLocaleDateString("en-CA") <= endDate) {
+          totalReferrals++;
+        }
+      } else {
+        totalReferrals++;
+      }
 
       // First deposit check - only count if this is the user's very first deposit ever
       let firstDeposit = 0;
@@ -3166,13 +3172,6 @@ router.get("/referralsbydate/:userId", async (req, res) => {
 
     // Calculate grand total bets
     grandTotalBets = totalBets + totalApiBets + totalHuiduBets;
-    
-    // Debug logging for totals
-    console.log('Debug - Totals calculation:');
-    console.log('totalBets:', totalBets);
-    console.log('totalApiBets:', totalApiBets);
-    console.log('totalHuiduBets:', totalHuiduBets);
-    console.log('grandTotalBets:', grandTotalBets);
 
     // ================= Response =================
     res.json({
@@ -3181,7 +3180,7 @@ router.get("/referralsbydate/:userId", async (req, res) => {
       dateType: dateType || "all",
       dateRange: startDate ? { startDate, endDate } : "All Time",
       totalReferrals,
-      note: startDate ? "Date filter applies to betting/deposit data only, not referral count" : "All time data",
+      note: startDate ? "Date filter applies to both referral count (when they joined) and betting/deposit data" : "All time data",
       totalFirstDeposit: totalFirstDeposit.toFixed(2),
       totalDeposit: totalDeposit.toFixed(2),
       totalBets: totalBets.toFixed(2),
