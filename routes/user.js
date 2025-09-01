@@ -1022,7 +1022,7 @@ router.get('/report/transactions/:userId', async (req, res) => {
         d.userId,
         d.amount,
         d.cryptoname,
-        d.created_at AS date,
+        d.date AS date,
         u.name,
         u.email
       FROM deposits d
