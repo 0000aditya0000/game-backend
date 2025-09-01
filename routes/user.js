@@ -3323,10 +3323,13 @@ router.get("/referrals/:userId", async (req, res) => {
 
       // Merge data
       referrals.forEach(referral => {
+        // Convert user_id to string for comparison with VARCHAR columns
+        const userIdString = referral.user_id.toString();
+        
         const deposit = deposits.find(d => d.userId === referral.user_id);
         const bet = bets.find(b => b.user_id === referral.user_id);
-        const apiBet = apiBets.find(a => a.login === referral.user_id);
-        const huiduBet = huiduBets.find(h => h.userid === referral.user_id);
+        const apiBet = apiBets.find(a => a.login === userIdString);
+        const huiduBet = huiduBets.find(h => h.userid === userIdString);
         const commission = commissions.find(c => c.referred_user_id === referral.user_id);
 
         referral.first_deposit = deposit?.first_deposit || 0;
@@ -3335,6 +3338,17 @@ router.get("/referrals/:userId", async (req, res) => {
         referral.total_api_bets = parseFloat(apiBet?.total_api_bets || 0);
         referral.total_huidu_bets = parseFloat(huiduBet?.total_huidu_bets || 0);
         referral.pending_commission = commission?.pending_commission || 0;
+
+        // Debug individual matching for first few referrals
+        if (referral.referral_id <= 10482) {
+          console.log(`Debug - Referral ${referral.referral_id} (User ID: ${referral.user_id}, String: ${userIdString}):`);
+          console.log(`  - Found deposit:`, deposit ? 'Yes' : 'No');
+          console.log(`  - Found bet:`, bet ? 'Yes' : 'No');
+          console.log(`  - Found API bet:`, apiBet ? 'Yes' : 'No');
+          console.log(`  - Found Huidu bet:`, huiduBet ? 'Yes' : 'No');
+          console.log(`  - API bet data:`, apiBet);
+          console.log(`  - Huidu bet data:`, huiduBet);
+        }
       });
 
       // Debug logging to check data
@@ -3351,6 +3365,11 @@ router.get("/referrals/:userId", async (req, res) => {
       console.log('huiduBets count:', huiduBets.length);
       console.log('commissions count:', commissions.length);
       console.log('referrals count:', referrals.length);
+      
+      // Debug sample data structure
+      console.log('Debug - Sample referral user IDs:', referrals.slice(0, 5).map(r => r.user_id));
+      console.log('Debug - Sample API bet logins:', apiBets.slice(0, 5).map(a => a.login));
+      console.log('Debug - Sample Huidu bet userids:', huiduBets.slice(0, 5).map(h => h.userid));
     }
 
     // Group referrals by level and calculate totals
