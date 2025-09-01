@@ -2836,6 +2836,18 @@ router.get("/referralsbydate/:userId", async (req, res) => {
             WHERE b.user_id = u.id
               ${startDate && endDate ? `AND DATE(b.placed_at) BETWEEN ? AND ?` : ""}
           ) AS range_total_bets,
+          (
+            SELECT IFNULL(SUM(at.bet), 0)
+            FROM api_turnover at 
+            WHERE at.login = u.id
+              ${startDate && endDate ? `AND DATE(at.created_at) BETWEEN ? AND ?` : ""}
+          ) AS range_total_api_bets,
+          (
+            SELECT IFNULL(SUM(ht.bet_amount), 0)
+            FROM huidu_txn ht 
+            WHERE ht.userid = u.id AND ht.bet_amount > 0
+              ${startDate && endDate ? `AND DATE(ht.created_at) BETWEEN ? AND ?` : ""}
+          ) AS range_total_huidu_bets,
           (SELECT IFNULL(SUM(c.amount), 0) 
            FROM referralcommissionhistory c 
            WHERE c.user_id = ? AND c.referred_user_id = u.id AND c.credited = 0
@@ -2851,6 +2863,8 @@ router.get("/referralsbydate/:userId", async (req, res) => {
         params.push(startDate); // for range_first_deposit
         params.push(startDate, endDate); // for range_total_deposit
         params.push(startDate, endDate); // for range_total_bets
+        params.push(startDate, endDate); // for range_total_api_bets
+        params.push(startDate, endDate); // for range_total_huidu_bets
       }
       params.push(userId, userId); // pending_commission + referrer_id
 
@@ -2905,6 +2919,9 @@ router.get("/referralsbydate/:userId", async (req, res) => {
     let totalFirstDeposit = 0;
     let totalDeposit = 0;
     let totalBets = 0;
+    let totalApiBets = 0;
+    let totalHuiduBets = 0;
+    let grandTotalBets = 0;
     let firstDepositorsCount = 0;
     let totalReferrals = 0;
 
@@ -2937,6 +2954,14 @@ router.get("/referralsbydate/:userId", async (req, res) => {
       let rangeBets = row.range_total_bets ? parseFloat(row.range_total_bets) : 0;
       totalBets += rangeBets;
 
+      // Total API bets (DATE FILTERED)
+      let rangeApiBets = row.range_total_api_bets ? parseFloat(row.range_total_api_bets) : 0;
+      totalApiBets += rangeApiBets;
+
+            // Total Huidu bets (DATE FILTERED)
+      let rangeHuiduBets = row.range_total_huidu_bets ? parseFloat(row.range_total_huidu_bets) : 0;
+      totalHuiduBets += rangeHuiduBets;
+
       referralsByLevel[levelKey].push({
         id: row.id,
         name: row.name,
@@ -2946,9 +2971,14 @@ router.get("/referralsbydate/:userId", async (req, res) => {
         first_deposit: firstDeposit.toFixed(2),
         total_deposit: rangeDeposit.toFixed(2),
         total_bets: rangeBets.toFixed(2),
+        total_api_bets: rangeApiBets.toFixed(2),
+        total_huidu_bets: rangeHuiduBets.toFixed(2),
         pending_commission: parseFloat(row.pending_commission || 0).toFixed(2),
       });
     }
+
+    // Calculate grand total bets
+    grandTotalBets = totalBets + totalApiBets + totalHuiduBets;
 
     // ================= Response =================
     res.json({
@@ -2959,7 +2989,7 @@ router.get("/referralsbydate/:userId", async (req, res) => {
       totalReferrals,
       totalFirstDeposit: totalFirstDeposit.toFixed(2),
       totalDeposit: totalDeposit.toFixed(2),
-      totalBets: totalBets.toFixed(2), // ✅ DATE FILTERED total bets
+      totalBets: grandTotalBets.toFixed(2),
       firstDepositorsCount,
       directSubordinates,
       teamSubordinates,
@@ -2992,7 +3022,9 @@ router.get("/referrals/:userId", async (req, res) => {
             r.level,
             (SELECT d.amount FROM deposits d WHERE d.userId = u.id ORDER BY d.date ASC LIMIT 1) AS first_deposit,
             (SELECT SUM(d.amount) FROM deposits d WHERE d.userId = u.id) AS total_deposit,
-            (SELECT SUM(b.amount) FROM bets b WHERE b.user_id = u.id) AS total_bets,            
+            (SELECT SUM(b.amount) FROM bets b WHERE b.user_id = u.id) AS total_bets,
+            (SELECT IFNULL(SUM(at.bet), 0) FROM api_turnover at WHERE at.login = u.id) AS total_api_bets,
+            (SELECT IFNULL(SUM(ht.bet_amount), 0) FROM huidu_txn ht WHERE ht.userid = u.id AND ht.bet_amount > 0) AS total_huidu_bets,
             (SELECT IFNULL(SUM(c.amount), 0) FROM referralcommissionhistory c WHERE c.user_id = ? AND c.referred_user_id = u.id AND c.credited = 0 ) AS pending_commission
             FROM referrals r JOIN users u ON r.referred_id = u.id WHERE r.referrer_id = ? ORDER BY r.level
         `;
@@ -3004,15 +3036,36 @@ router.get("/referrals/:userId", async (req, res) => {
       });
     });
 
-    // Group referrals by level
+    // Group referrals by level and calculate totals
     const referralsByLevel = {};
+    let totalBetsSum = 0;
+    let totalApiBetsSum = 0;
+    let totalHuiduBetsSum = 0;
+    let grandTotalBetsSum = 0;
+
     for (let i = 1; i <= 5; i++) {
       referralsByLevel[`level${i}`] = referrals.filter(ref => ref.level === i);
+      
+      // Calculate sums for this level
+      referralsByLevel[`level${i}`].forEach(ref => {
+        totalBetsSum += parseFloat(ref.total_bets || 0);
+        totalApiBetsSum += parseFloat(ref.total_api_bets || 0);
+        totalHuiduBetsSum += parseFloat(ref.total_huidu_bets || 0);
+      });
     }
+
+    // Calculate grand total
+    grandTotalBetsSum = totalBetsSum + totalApiBetsSum + totalHuiduBetsSum;
 
     res.json({
       userId,
       totalReferrals: referrals.length,
+      totalBets: {
+        bets_table: totalBetsSum.toFixed(2),
+        api_turnover_table: totalApiBetsSum.toFixed(2),
+        huidu_txn_table: totalHuiduBetsSum.toFixed(2),
+        grand_total: grandTotalBetsSum.toFixed(2)
+      },
       referralsByLevel
     });
   } catch (err) {
