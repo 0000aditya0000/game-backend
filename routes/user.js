@@ -3161,6 +3161,7 @@ router.get("/referralsbydate/:userId", async (req, res) => {
         username: row.username,
         email: row.email,
         level: row.level,
+        join_date: startDate && endDate ? new Date(row.created_at).toLocaleDateString('en-CA') : null,
         first_deposit: firstDeposit.toFixed(2),
         overall_first_deposit: parseFloat(row.overall_first_deposit || 0).toFixed(2),
         total_deposit: rangeDeposit.toFixed(2),
