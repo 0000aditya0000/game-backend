@@ -3331,10 +3331,25 @@ router.get("/referrals/:userId", async (req, res) => {
         referral.first_deposit = deposit?.first_deposit || 0;
         referral.total_deposit = deposit?.total_deposit || 0;
         referral.total_bets = bet?.total_bets || 0;
-        referral.total_api_bets = apiBet?.total_api_bets || 0;
-        referral.total_huidu_bets = huiduBet?.total_huidu_bets || 0;
+        referral.total_api_bets = parseFloat(apiBet?.total_api_bets || 0);
+        referral.total_huidu_bets = parseFloat(huiduBet?.total_huidu_bets || 0);
         referral.pending_commission = commission?.pending_commission || 0;
       });
+
+      // Debug logging to check data
+      console.log('Debug - Sample referral data:', referrals.slice(0, 2));
+      console.log('Debug - API bets sample:', apiBets.slice(0, 2));
+      console.log('Debug - Huidu bets sample:', huiduBets.slice(0, 2));
+      console.log('Debug - Referral IDs sample:', referralIds.slice(0, 5));
+      
+      // Additional debug logging for raw data counts
+      console.log('Debug - Raw data counts:');
+      console.log('deposits count:', deposits.length);
+      console.log('bets count:', bets.length);
+      console.log('apiBets count:', apiBets.length);
+      console.log('huiduBets count:', huiduBets.length);
+      console.log('commissions count:', commissions.length);
+      console.log('referrals count:', referrals.length);
     }
 
     // Group referrals by level and calculate totals
@@ -3357,6 +3372,13 @@ router.get("/referrals/:userId", async (req, res) => {
 
     // Calculate grand total
     grandTotalBetsSum = totalBetsSum + totalApiBetsSum + totalHuiduBetsSum;
+
+    // Debug logging for totals
+    console.log('Debug - Total calculations:');
+    console.log('totalBetsSum:', totalBetsSum);
+    console.log('totalApiBetsSum:', totalApiBetsSum);
+    console.log('totalHuiduBetsSum:', totalHuiduBetsSum);
+    console.log('grandTotalBetsSum:', grandTotalBetsSum);
 
     res.json({
       userId,
