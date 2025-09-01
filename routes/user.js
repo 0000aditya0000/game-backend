@@ -2846,20 +2846,22 @@ router.get("/referralsbydate/:userId", async (req, res) => {
 
       // Process deposits in chunks
       let allDeposits = [];
+      let allOverallFirstDeposits = [];
+      
       for (const chunk of chunks) {
         let depositsQuery, depositsParams;
         if (startDate && endDate) {
           depositsQuery = `
             SELECT 
               userId,
-              MIN(CASE WHEN DATE(date) = ? THEN amount END) as range_first_deposit,
+              MIN(amount) as range_first_deposit,
               SUM(amount) as range_total_deposit
             FROM deposits 
             WHERE userId IN (${chunk.map(() => '?').join(',')})
             AND DATE(date) BETWEEN ? AND ?
             GROUP BY userId
           `;
-          depositsParams = [startDate, ...chunk, startDate, endDate];
+          depositsParams = [...chunk, startDate, endDate];
         } else {
           depositsQuery = `
             SELECT 
@@ -2880,6 +2882,24 @@ router.get("/referralsbydate/:userId", async (req, res) => {
           });
         });
         allDeposits = allDeposits.concat(chunkDeposits);
+        
+        // Get overall first deposit for comparison
+        const overallFirstDepositsQuery = `
+          SELECT 
+            userId,
+            MIN(amount) as overall_first_deposit
+          FROM deposits 
+          WHERE userId IN (${chunk.map(() => '?').join(',')})
+          GROUP BY userId
+        `;
+        
+        const chunkOverallFirstDeposits = await new Promise((resolve, reject) => {
+          connection.query(overallFirstDepositsQuery, chunk, (err, results) => {
+            if (err) return reject(err);
+            resolve(results);
+          });
+        });
+        allOverallFirstDeposits = allOverallFirstDeposits.concat(chunkOverallFirstDeposits);
       }
 
       // Process bets in chunks
@@ -3015,6 +3035,7 @@ router.get("/referralsbydate/:userId", async (req, res) => {
 
       // Use the accumulated results
       const deposits = allDeposits;
+      const overallFirstDeposits = allOverallFirstDeposits;
       const bets = allBets;
       const apiBets = allApiBets;
       const huiduBets = allHuiduBets;
@@ -3026,12 +3047,14 @@ router.get("/referralsbydate/:userId", async (req, res) => {
         const userIdString = referral.user_id.toString();
         
         const deposit = deposits.find(d => d.userId === referral.user_id);
+        const overallFirstDeposit = overallFirstDeposits.find(o => o.userId === referral.user_id);
         const bet = bets.find(b => b.user_id === referral.user_id);
         const apiBet = apiBets.find(a => a.login === userIdString);
         const huiduBet = huiduBets.find(h => h.userid === userIdString);
         const commission = commissions.find(c => c.referred_user_id === referral.user_id);
 
         referral.range_first_deposit = deposit?.range_first_deposit || 0;
+        referral.overall_first_deposit = overallFirstDeposit?.overall_first_deposit || 0;
         referral.range_total_deposit = deposit?.range_total_deposit || 0;
         referral.range_total_bets = bet?.range_total_bets || 0;
         referral.range_total_api_bets = parseFloat(apiBet?.range_total_api_bets || 0);
@@ -3104,9 +3127,10 @@ router.get("/referralsbydate/:userId", async (req, res) => {
         totalReferrals++;
       }
 
-      // First deposit check
+      // First deposit check - only count if this is the user's very first deposit ever
       let firstDeposit = 0;
-      if (row.range_first_deposit && row.range_first_deposit == row.overall_first_deposit) {
+      if (row.range_first_deposit && row.overall_first_deposit && 
+          parseFloat(row.range_first_deposit) === parseFloat(row.overall_first_deposit)) {
         firstDeposit = parseFloat(row.range_first_deposit);
         totalFirstDeposit += firstDeposit;
         firstDepositorsCount++;
@@ -3135,6 +3159,7 @@ router.get("/referralsbydate/:userId", async (req, res) => {
         email: row.email,
         level: row.level,
         first_deposit: firstDeposit.toFixed(2),
+        overall_first_deposit: parseFloat(row.overall_first_deposit || 0).toFixed(2),
         total_deposit: rangeDeposit.toFixed(2),
         total_bets: rangeBets.toFixed(2),
         total_api_bets: rangeApiBets.toFixed(2),
@@ -3155,7 +3180,10 @@ router.get("/referralsbydate/:userId", async (req, res) => {
       totalReferrals,
       totalFirstDeposit: totalFirstDeposit.toFixed(2),
       totalDeposit: totalDeposit.toFixed(2),
-      totalBets: grandTotalBets.toFixed(2),
+      totalBets: totalBets.toFixed(2),
+      totalApiBets: totalApiBets.toFixed(2),
+      totalHuiduBets: totalHuiduBets.toFixed(2),
+      grandTotalBets: grandTotalBets.toFixed(2),
       firstDepositorsCount,
       directSubordinates,
       teamSubordinates,
