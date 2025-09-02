@@ -3903,12 +3903,39 @@ router.get('/commissions/:userId', async (req, res) => {
         if (err) return reject(err);
         resolve(results);
       });
+    });   
+  
+
+    //  Get yesterday’s commissions
+    const yesterdayCommissionsQuery = `
+      SELECT 
+        SUM(amount) AS total_amount,
+        DATE(DATE_SUB(NOW(), INTERVAL 1 DAY)) AS yesterday_date
+      FROM referralcommissionhistory
+      WHERE user_id = ? AND credited = 1
+        AND DATE(created_at) = DATE(DATE_SUB(NOW(), INTERVAL 1 DAY))
+    `;
+    let [yesterdayCommissions] = await new Promise((resolve, reject) => {
+      connection.query(yesterdayCommissionsQuery, [userId], (err, results) => {
+        if (err) return reject(err);
+        resolve(results);
+      });
     });
 
-    res.json({
+    //  Format yesterday_date cleanly (YYYY-MM-DD in IST)
+    if (yesterdayCommissions && yesterdayCommissions.yesterday_date) {
+      yesterdayCommissions.yesterday_date = new Date(yesterdayCommissions.yesterday_date)
+        .toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" }); 
+    }
+
+
+   res.json({
       userId: parseInt(userId),
       commissions: commissions.length > 0 ? commissions : [],
-      message: commissions.length > 0 ? 'Total commissions retrieved successfully' : 'No commissions found for this user'
+      yesterdayCommissions: yesterdayCommissions || { total_amount: null, yesterday_date: null },
+      message: commissions.length > 0
+        ? 'Total commissions retrieved successfully'
+        : 'No commissions found for this user'
     });
   } catch (error) {
     console.error(`Error retrieving commissions for user ${userId}:`, error);
@@ -3988,11 +4015,11 @@ router.get('/pending-commissions/:userId', async (req, res) => {
     }
 
     const pendingCommissionsQuery = `
-  SELECT SUM(amount) AS total_amount
-  FROM referralcommissionhistory
-  WHERE user_id = ?
-    AND DATE(created_at) = DATE(DATE_SUB(NOW(), INTERVAL 1 DAY))
-`;
+     SELECT SUM(amount) AS total_amount
+     FROM referralcommissionhistory
+      WHERE user_id = ? AND credited=0
+     AND DATE(created_at) = DATE(NOW())
+    `;
     const pendingCommissions = await new Promise((resolve, reject) => {
       connection.query(pendingCommissionsQuery, [userId], (err, results) => {
         if (err) return reject(err);

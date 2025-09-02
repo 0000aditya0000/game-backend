@@ -110,7 +110,20 @@ async function getDailyBettingAmounts(startDate, endDate) {
                 GROUP BY login
             `,
             params: [startDate, endDate]
-        }
+        },
+           //huidu_txn
+          {
+    query: `
+        SELECT userid as user_id, 
+               SUM(ABS(CAST(bet_amount AS DECIMAL(20,8)))) as total_amount, 
+               currency_code as cryptoname
+        FROM huidu_txn 
+        WHERE created_at >= ? AND created_at <= ? AND status = 'success'
+        GROUP BY userid, currency_code
+    `,
+    params: [startDate, endDate]
+}
+
     ];
 
     // Execute all queries
@@ -172,25 +185,34 @@ async function calculateBettingCommissions(userId, bettingAmount, cryptoname, co
         while (currentReferrerId && level <= 6) {
             try {
                 // Get today's betting amount for the referrer
-                const { startDate, endDate } = getTodayDateRange();
-                const todayBettingQuery = `
-                    SELECT COALESCE(
-                        (SELECT SUM(amount) FROM bets WHERE user_id = ? AND status = 'processed' AND placed_at BETWEEN ? AND ?) +
-                        (SELECT SUM(amount) FROM bets_trx WHERE user_id = ? AND status != 'pending' AND created_at BETWEEN ? AND ?) +
-                        (SELECT SUM(amount) FROM bets_5d WHERE user_id = ? AND status != 'pending' AND created_at BETWEEN ? AND ?) +
-                        (SELECT SUM(bet) FROM api_turnover WHERE login = ? AND created_at BETWEEN ? AND ?),
-                        0
-                    ) as total_betting
-                `;
+              // Normal range for most tables
+const { startDate, endDate } = getTodayDateRange(); // this can stay UTC-based
+
+// Special IST range for huidu_txn
+const moment = require("moment-timezone");
+const startDateIST = moment.tz("Asia/Kolkata").startOf("day").format("YYYY-MM-DD HH:mm:ss");
+const endDateIST = moment.tz("Asia/Kolkata").endOf("day").format("YYYY-MM-DD HH:mm:ss");
+
+const todayBettingQuery = `
+    SELECT COALESCE(
+        (SELECT SUM(amount) FROM bets WHERE user_id = ? AND status = 'processed' AND placed_at BETWEEN ? AND ?) +
+        (SELECT SUM(amount) FROM bets_trx WHERE user_id = ? AND status != 'pending' AND created_at BETWEEN ? AND ?) +
+        (SELECT SUM(amount) FROM bets_5d WHERE user_id = ? AND status != 'pending' AND created_at BETWEEN ? AND ?) +
+        (SELECT SUM(bet) FROM api_turnover WHERE login = ? AND created_at BETWEEN ? AND ?) +
+        (SELECT SUM(ABS(bet_amount)) FROM huidu_txn WHERE userid = ? AND status = 'success' AND created_at BETWEEN ? AND ?),
+        0
+    ) as total_betting
+`;
 
                 const [bettingResult] = await new Promise((resolve, reject) => {
                     connection.query(
                         todayBettingQuery,
                         [
-                            currentReferrerId, startDate, endDate,
-                            currentReferrerId, startDate, endDate,
-                            currentReferrerId, startDate, endDate,
-                            currentReferrerId.toString(), startDate, endDate
+                                currentReferrerId, startDate, endDate,
+                                currentReferrerId, startDate, endDate,
+                                currentReferrerId, startDate, endDate,
+                                currentReferrerId.toString(), startDate, endDate,
+                                currentReferrerId.toString(), startDateIST, endDateIST // special case
                         ],
                         (err, results) => {
                             if (err) return reject(err);
