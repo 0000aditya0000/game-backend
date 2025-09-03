@@ -103,7 +103,7 @@ async function creditCommissions() {
 //     scheduled: true,
 //     timezone: 'UTC'
 // });
-cron.schedule('30 18 * * *', creditCommissions, {
+cron.schedule('30 19 * * *', creditCommissions, {
   scheduled: true,
   timezone: 'UTC'
 });

@@ -3911,8 +3911,8 @@ router.get('/commissions/:userId', async (req, res) => {
       SELECT 
         SUM(amount) AS total_amount,
         DATE(DATE_SUB(NOW(), INTERVAL 1 DAY)) AS yesterday_date
-      FROM referralcommissionhistory
-      WHERE user_id = ? AND credited = 1
+        FROM referralcommissionhistory
+        WHERE user_id = ? AND credited = 1
         AND DATE(created_at) = DATE(DATE_SUB(NOW(), INTERVAL 1 DAY))
     `;
     let [yesterdayCommissions] = await new Promise((resolve, reject) => {
@@ -3942,6 +3942,160 @@ router.get('/commissions/:userId', async (req, res) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 });
+
+
+router.get('/commissions2/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    if (!userId || isNaN(userId)) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Valid userId is required.' 
+      });
+    }
+
+    // Check if user exists
+    const [userResult] = await new Promise((resolve, reject) => {
+      connection.query(
+        "SELECT id, username, name FROM users WHERE id = ?", 
+        [userId], 
+        (err, results) => {
+          if (err) return reject(err);
+          resolve(results);
+        }
+      );
+    });
+
+    if (!userResult) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'User not found' 
+      });
+    }
+
+    // Get yesterday's date range in IST
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yesterdayStart = new Date(yesterday.setHours(0, 0, 0, 0));
+    const yesterdayEnd = new Date(yesterday.setHours(23, 59, 59, 999));
+
+    // Get yesterday's commission details with referral chain
+    const commissionsQuery = `
+      SELECT 
+        rch.id,
+        rch.user_id,
+        rch.referred_user_id,
+        rch.level,
+        rch.rebate_level,
+        rch.amount as commission_amount,
+        rch.totalBet as bet_amount,
+        rch.cryptoname,
+        rch.credited,
+        rch.created_at,
+        u.username as referred_username,
+        u.name as referred_name
+      FROM referralcommissionhistory rch
+      JOIN users u ON rch.referred_user_id = u.id
+      WHERE rch.user_id = ? 
+      AND DATE(rch.created_at) = DATE(?)
+      ORDER BY rch.level ASC, rch.created_at DESC
+    `;
+
+    const commissions = await new Promise((resolve, reject) => {
+      connection.query(
+        commissionsQuery, 
+        [userId, yesterdayStart], 
+        (err, results) => {
+          if (err) return reject(err);
+          resolve(results);
+        }
+      );
+    });
+
+    // Get total credited commissions by cryptoname
+    const totalCommissionsQuery = `
+      SELECT 
+        cryptoname,
+        total_commissions,
+        updated_at
+      FROM usercommissions
+      WHERE userId = ?
+    `;
+
+    const totalCommissions = await new Promise((resolve, reject) => {
+      connection.query(
+        totalCommissionsQuery, 
+        [userId], 
+        (err, results) => {
+          if (err) return reject(err);
+          resolve(results);
+        }
+      );
+    });
+
+    // Group commissions by level
+    const commissionsByLevel = {};
+    let yesterdayTotal = 0;
+    let totalBetAmount = 0;
+
+    commissions.forEach(commission => {
+      const level = `level${commission.level}`;
+      if (!commissionsByLevel[level]) {
+        commissionsByLevel[level] = [];
+      }
+
+      yesterdayTotal += parseFloat(commission.commission_amount);
+      totalBetAmount += parseFloat(commission.bet_amount);
+
+      commissionsByLevel[level].push({
+        commission_id: commission.id,
+        referred_user: {
+          id: commission.referred_user_id,
+          username: commission.referred_username,
+          name: commission.referred_name
+        },
+        commission_amount: parseFloat(commission.commission_amount),
+        bet_amount: parseFloat(commission.bet_amount),
+        rebate_level: commission.rebate_level,
+        cryptoname: commission.cryptoname,
+        credited: Boolean(commission.credited),
+        created_at: commission.created_at
+      });
+    });
+
+    res.json({
+      success: true,
+      user: {
+        id: userResult.id,
+        username: userResult.username,
+        name: userResult.name
+      },
+      yesterday_date: yesterday.toISOString().split('T')[0],
+      yesterday_summary: {
+        total_commission: yesterdayTotal.toFixed(2),
+        total_bet_amount: totalBetAmount.toFixed(2),
+        total_referrals: commissions.length,
+        levels_count: Object.keys(commissionsByLevel).length
+      },
+      commissions_by_level: commissionsByLevel,
+      lifetime_commissions: totalCommissions.map(tc => ({
+        cryptoname: tc.cryptoname,
+        total_amount: parseFloat(tc.total_commissions).toFixed(2),
+        last_updated: tc.updated_at
+      }))
+    });
+
+  } catch (error) {
+    console.error('Error fetching commission details:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching commission details',
+      error: error.message
+    });
+  }
+});
+
 
 router.get('/commissions/:userId/:cryptoname', async (req, res) => {
   const { userId, cryptoname } = req.params;
