@@ -170,7 +170,7 @@ router.get("/get-all-recharges", async (req, res) => {
         time
       FROM recharge
       ${whereClause}
-      ORDER BY recharge_id DESC
+      ORDER BY date DESC
       LIMIT ? OFFSET ?
       `,
       [...params, limit, offset]
@@ -357,7 +357,7 @@ router.get("/get-all-recharges/sort", async (req, res) => {
         time
       FROM recharge
       ${whereClause}
-      ORDER BY recharge_id DESC
+      ORDER BY date DESC
       LIMIT ? OFFSET ?
       `,
       [...params, limit, offset]
