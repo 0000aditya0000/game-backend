@@ -98,7 +98,7 @@ async function creditCommissions() {
     }
 }
 
-//  CRON JOB (Auto runs daily at 12:00 AM IST)
+//  CRON JOB (Auto runs daily at 1:00 AM IST)
 // cron.schedule('30 18 * * *', creditCommissions, {
 //     scheduled: true,
 //     timezone: 'UTC'
@@ -108,7 +108,7 @@ cron.schedule('30 19 * * *', creditCommissions, {
   timezone: 'UTC'
 });
 
-console.log('Commission scheduler loaded. Cron job scheduled for 12:00 AM IST.');
+console.log('Commission scheduler loaded. Cron job scheduled for 1:00 AM IST.');
 
 //  EXPORT the function to call manually
 module.exports = { creditCommissions };
