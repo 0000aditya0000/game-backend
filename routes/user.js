@@ -2458,6 +2458,21 @@ const yesterdayStr = yesterday.toLocaleDateString('en-CA');
       });
     });
 
+   const teamSubordinatCount = await new Promise((resolve, reject) => {
+      const sql = `
+       SELECT COUNT(u.id) AS teamSubordinates
+        FROM referrals r
+        JOIN users u ON r.referred_id = u.id
+        WHERE r.referrer_id = ? AND  r.level > 1
+        AND DATE(created_at) = DATE(DATE_SUB(NOW(), INTERVAL 1 DAY))   
+      `;
+      connection.query(sql, [userId], (err, results) => {
+        if (err) return reject(err);
+        resolve(results[0]?.teamSubordinates || 0);
+      });
+    });  
+  
+
     // 3. Process
     const referralsByLevel = { level1: [], level2: [], level3: [], level4: [], level5: [] };
 
@@ -2489,6 +2504,8 @@ const yesterdayStr = yesterday.toLocaleDateString('en-CA');
       let yesterdayDeposit = row.yesterday_total_deposit ? parseFloat(row.yesterday_total_deposit) : 0;
       totalDeposit += yesterdayDeposit;
 
+
+      
       referralsByLevel[levelKey].push({
         id: row.id,
         name: row.name,
@@ -2507,6 +2524,7 @@ const yesterdayStr = yesterday.toLocaleDateString('en-CA');
       date: yesterdayStr,
       userId,
       totalReferrals, // only those who joined yesterday
+      teamSubordinat: teamSubordinatCount,
       totalFirstDeposit: totalFirstDeposit.toFixed(2),
       totalDeposit: totalDeposit.toFixed(2),
       firstDepositorsCount,
