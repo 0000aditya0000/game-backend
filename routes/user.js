@@ -2202,6 +2202,102 @@ router.get('/user-bet-stats/:userId', async (req, res) => {
 });
 
 
+// //============== Get user's transaction history=============
+// router.get('/transactions/:userId', async (req, res) => {
+//   try {
+//     const { userId } = req.params;
+
+//     // First check if user exists
+//     const userQuery = "SELECT id, username FROM users WHERE id = ?";
+//     const [user] = await new Promise((resolve, reject) => {
+//       connection.query(userQuery, [userId], (err, results) => {
+//         if (err) reject(err);
+//         resolve(results);
+//       });
+//     });
+
+//     if (!user) {
+//       return res.status(404).json({
+//         success: false,
+//         message: "User not found"
+//       });
+//     }
+
+//     // Get recharge history
+//     const rechargeQuery = `
+//             SELECT 
+//                 'recharge' as transaction_type,
+//                 recharge_id as id,
+//                 order_id,
+//                 recharge_amount as amount,
+//                 recharge_type as type,
+//                 payment_mode,
+//                 recharge_status as status,
+//                 CONCAT(date, ' ', time) as transaction_date
+//             FROM recharge 
+//             WHERE userId = ?`;
+
+//     // Get withdrawal history
+//     const withdrawalQuery = `
+//             SELECT 
+//                 'withdrawal' as transaction_type,
+//                 id,
+//                 balance as amount,
+//                 cryptoname as type,
+//                 reject_note as   note,
+//                 CASE 
+//                     WHEN status = 0 THEN 'pending'
+//                     WHEN status = 1 THEN 'approved'
+//                     WHEN status = 2 THEN 'rejected'
+//                 END as status,
+//                 NULL as order_id,
+//                 NULL as payment_mode,
+//                 DATE_FORMAT(NOW(), '%Y-%m-%d %H:%i:%s') as transaction_date
+//             FROM withdrawl 
+//             WHERE userId = ?`;
+
+//     // Execute both queries
+//     const [recharges, withdrawals] = await Promise.all([
+//       new Promise((resolve, reject) => {
+//         connection.query(rechargeQuery, [userId], (err, results) => {
+//           if (err) reject(err);
+//           resolve(results);
+//         });
+//       }),
+//       new Promise((resolve, reject) => {
+//         connection.query(withdrawalQuery, [userId], (err, results) => {
+//           if (err) reject(err);
+//           resolve(results);
+//         });
+//       })
+//     ]);
+
+//     // Combine and sort all transactions by date
+//     const allTransactions = [...recharges, ...withdrawals]
+//       .sort((a, b) => new Date(b.transaction_date) - new Date(a.transaction_date));
+
+//     res.json({
+//       success: true,
+//       user: {
+//         id: user.id,
+//         username: user.username
+//       },
+//       transactions: allTransactions.map(transaction => ({
+//         ...transaction,
+//         transaction_date: new Date(transaction.transaction_date).toLocaleString()
+//       }))
+//     });
+
+//   } catch (error) {
+//     console.error('Error fetching transaction history:', error);
+//     res.status(500).json({
+//       success: false,
+//       message: 'Error fetching transaction history',
+//       error: error.message
+//     });
+//   }
+// });
+
 //============== Get user's transaction history=============
 router.get('/transactions/:userId', async (req, res) => {
   try {
@@ -2223,41 +2319,60 @@ router.get('/transactions/:userId', async (req, res) => {
       });
     }
 
-    // Get recharge history
+    // Recharge history
     const rechargeQuery = `
-            SELECT 
-                'recharge' as transaction_type,
-                recharge_id as id,
-                order_id,
-                recharge_amount as amount,
-                recharge_type as type,
-                payment_mode,
-                recharge_status as status,
-                CONCAT(date, ' ', time) as transaction_date
-            FROM recharge 
-            WHERE userId = ?`;
+      SELECT 
+          'recharge' as transaction_type,
+          recharge_id as id,
+          order_id,
+          recharge_amount as amount,
+          recharge_type as type,
+          payment_mode,
+          recharge_status as status,
+          created_at as transaction_date,
+          NULL as note
+      FROM recharge 
+      WHERE userId = ?
+    `;
 
-    // Get withdrawal history
+    // Withdrawal history
     const withdrawalQuery = `
-            SELECT 
-                'withdrawal' as transaction_type,
-                id,
-                balance as amount,
-                cryptoname as type,
-                reject_note as   note,
-                CASE 
-                    WHEN status = 0 THEN 'pending'
-                    WHEN status = 1 THEN 'approved'
-                    WHEN status = 2 THEN 'rejected'
-                END as status,
-                NULL as order_id,
-                NULL as payment_mode,
-                DATE_FORMAT(NOW(), '%Y-%m-%d %H:%i:%s') as transaction_date
-            FROM withdrawl 
-            WHERE userId = ?`;
+      SELECT 
+          'withdrawal' as transaction_type,
+          id,
+          balance as amount,
+          cryptoname as type,
+          reject_note as note,
+          CASE 
+              WHEN status = 0 THEN 'pending'
+              WHEN status = 1 THEN 'approved'
+              WHEN status = 2 THEN 'rejected'
+          END as status,
+          NULL as order_id,
+          NULL as payment_mode,
+          createdOn as transaction_date
+      FROM withdrawl 
+      WHERE userId = ?
+    `;
 
-    // Execute both queries
-    const [recharges, withdrawals] = await Promise.all([
+    // Bonus transfer history
+    const bonusQuery = `
+      SELECT 
+          'bonus_transfer' as transaction_type,
+          id,
+          amount,
+          'bonus' as type,
+          'bonus transfer' as note,
+          'completed' as status,
+          NULL as order_id,
+          NULL as payment_mode,
+          created_at as transaction_date
+      FROM bonus_transfer_history
+      WHERE userId = ?
+    `;
+
+    // Execute all queries in parallel
+    const [recharges, withdrawals, bonusTransfers] = await Promise.all([
       new Promise((resolve, reject) => {
         connection.query(rechargeQuery, [userId], (err, results) => {
           if (err) reject(err);
@@ -2269,11 +2384,18 @@ router.get('/transactions/:userId', async (req, res) => {
           if (err) reject(err);
           resolve(results);
         });
+      }),
+      new Promise((resolve, reject) => {
+        connection.query(bonusQuery, [userId], (err, results) => {
+          if (err) reject(err);
+          resolve(results);
+        });
       })
     ]);
 
-    // Combine and sort all transactions by date
-    const allTransactions = [...recharges, ...withdrawals]
+    // Combine and sort
+    const allTransactions = [...recharges, ...withdrawals, ...bonusTransfers]
+      .filter(t => t.transaction_date) 
       .sort((a, b) => new Date(b.transaction_date) - new Date(a.transaction_date));
 
     res.json({
@@ -2297,6 +2419,9 @@ router.get('/transactions/:userId', async (req, res) => {
     });
   }
 });
+
+
+
 
 //--------------------------------------- Protected Routes----------------------
 
