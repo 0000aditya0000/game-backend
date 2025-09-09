@@ -307,6 +307,48 @@ router.put("/edit-bonus", (req, res) => {
   });
 });
 
+// =========== Add balance to INR wallet all users  or list of users =============
+router.post("/wallet/add-balance", async (req, res) => {
+  const { userIds, amount } = req.body;
+
+  if (!amount || isNaN(amount)) {
+    return res.status(400).json({ success: false, message: "Valid amount required" });
+  }
+
+  try {
+    let query = "";
+    let params = [];
+
+    if (userIds && Array.isArray(userIds) && userIds.length > 0) {
+      // Specific list of users
+      query = `
+        UPDATE wallet 
+        SET balance = COALESCE(balance, 0) + ?
+        WHERE UPPER(cryptoname) = 'INR' AND userId IN (?)
+      `;
+      params = [amount, userIds];
+    } else {
+      // All users
+      query = `
+        UPDATE wallet
+        SET balance = COALESCE(balance, 0) + ?
+        WHERE UPPER(cryptoname) = 'INR'
+      `;
+      params = [amount];
+    }
+
+    const [result] = await connection.promise().query(query, params);
+
+    res.json({
+      success: true,
+      message: "Balance updated successfully",
+      affectedRows: result.affectedRows,
+    });
+  } catch (err) {
+    console.error("Error updating balance:", err);
+    res.status(500).json({ success: false, message: "Internal server error" });
+  }
+});
 
 
 
