@@ -445,14 +445,14 @@ router.post('/addnew', async (req, res) => {
           INSERT INTO bankaccount (userId,accountHolder, accountname, accountnumber, ifsccode, branch, status) 
           VALUES (?, ?, ?, ?, ?,?, ?)
         `;
-        values = [userId,accountHolder, accountname, accountnumber, ifsccode, branch, 0];
+        values = [userId,accountHolder, accountname, accountnumber, ifsccode, branch, 1];
       } else {
         // For USDT accounts
         query = `
           INSERT INTO bankaccount (userId,accountHolder, usdt, network, status) 
           VALUES (?, ?, ?,?, ?)
         `;
-        values = [userId,accountHolder, usdt, network, 0];
+        values = [userId,accountHolder, usdt, network, 1];
       }
 
       connection.query(query, values, (err, results) => {
