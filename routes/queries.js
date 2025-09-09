@@ -97,6 +97,7 @@ router.get('/admin/all', async (req, res) => {
                         const formattedComment = {
                             id: c.id,
                             comment: c.comment,
+                            image: c.image,
                             role: c.admin_comment === 1 ? "admin" : "user", // convert role
                             created_at: c.created_at
                         };
@@ -135,193 +136,6 @@ router.get('/admin/all', async (req, res) => {
 });
 
 
-
-
-
-
-// //========= Admin: Get all queries with pagination and filters ============
-// router.get('/admin/all', async (req, res) => {
-//     try {
-//         const page = parseInt(req.query.page) || 1;
-//         const limit = parseInt(req.query.limit) || 20;
-//         const status = req.query.status;
-//         const type = req.query.type;
-//         const offset = (page - 1) * limit;
-
-//         let whereClause = '1=1';
-//         const queryParams = [];
-
-//         if (status) {
-//             whereClause += ' AND status = ?';
-//             queryParams.push(status);
-//         }
-
-//         if (type) {
-//             whereClause += ' AND query_type = ?';
-//             queryParams.push(type);
-//         }
-
-//         // Get total count
-//         const countQuery = `SELECT COUNT(*) as total FROM user_queries WHERE ${whereClause}`;
-
-//         connection.query(countQuery, queryParams, (countErr, countResult) => {
-//             if (countErr) {
-//                 return res.status(500).json({
-//                     success: false,
-//                     message: "Error counting queries"
-//                 });
-//             }
-
-//             const totalQueries = countResult[0].total;
-//             const totalPages = Math.ceil(totalQueries / limit);
-
-//             // Get queries with comment count
-//             const query = `
-//                 SELECT q.*, COUNT(c.id) as comment_count
-//                 FROM user_queries q
-//                 LEFT JOIN query_comments c ON q.id = c.query_id
-//                 WHERE ${whereClause}
-//                 GROUP BY q.id
-//                 ORDER BY q.created_at DESC
-//                 LIMIT ? OFFSET ?
-//             `;
-
-//             connection.query(query, [...queryParams, limit, offset], (err, queries) => {
-//                 if (err) {
-//                     return res.status(500).json({
-//                         success: false,
-//                         message: "Error fetching queries"
-//                     });
-//                 }
-
-//                 // Step 1: Extract all query IDs
-//                 const queryIds = queries.map(q => q.id);
-//                 if (queryIds.length === 0) {
-//                     return res.json({
-//                         success: true,
-//                         message: "Queries retrieved successfully",
-//                         pagination: {
-//                             current_page: page,
-//                             total_pages: totalPages,
-//                             total_items: totalQueries,
-//                             items_per_page: limit
-//                         },
-//                         data: []
-//                     });
-//                 }
-
-//                 // Step 2: Get all comments for these query IDs
-//                 const commentQuery = `
-//                     SELECT * FROM query_comments 
-//                     WHERE query_id IN (${queryIds.map(() => '?').join(',')})
-//                     ORDER BY created_at ASC
-//                 `;
-
-//                 connection.query(commentQuery, queryIds, (commentErr, comments) => {
-//                     if (commentErr) {
-//                         return res.status(500).json({
-//                             success: false,
-//                             message: "Error fetching comments"
-//                         });
-//                     }
-
-//                     // Step 3: Group comments by query_id
-//                     const commentMap = {};
-//                     comments.forEach(c => {
-//                         if (!commentMap[c.query_id]) commentMap[c.query_id] = [];
-//                         commentMap[c.query_id].push(c);
-//                     });
-
-//                     // Step 4: Attach comments to queries
-//                     const finalData = queries.map(q => ({
-//                         ...q,
-//                         comments: commentMap[q.id] || []
-//                     }));
-
-//                     res.json({
-//                         success: true,
-//                         message: "Queries retrieved successfully",
-//                         pagination: {
-//                             current_page: page,
-//                             total_pages: totalPages,
-//                             total_items: totalQueries,
-//                             items_per_page: limit
-//                         },
-//                         data: finalData
-//                     });
-//                 });
-//             });
-//         });
-//     } catch (error) {
-//         console.error('Server error:', error);
-//         res.status(500).json({
-//             success: false,
-//             message: "Internal server error"
-//         });
-//     }
-// });
-
-
-// // ================= Add comment to query : by admin ===============
-// router.post('/:queryId/comment', async (req, res) => {
-//     try {
-//         const { queryId } = req.params;
-//           console.log("Body received:", req.body); // Debug line
-//         const { comment, is_admin } = req.body;
-   
-//     if (!comment || comment.trim() === "") {
-//     return res.status(400).json({
-//         success: false,
-//         message: "Comment is required"
-//     });
-// }
-
-//         // First check if query exists
-//         const checkQuery = "SELECT id FROM user_queries WHERE id = ?";
-//         connection.query(checkQuery, [queryId], (checkErr, checkResults) => {
-//             if (checkErr || checkResults.length === 0) {
-//                 return res.status(404).json({
-//                     success: false,
-//                     message: "Query not found"
-//                 });
-//             }
-
-//             // Add comment
-//             const insertQuery = `
-//                 INSERT INTO query_comments 
-//                 (query_id, comment, admin_comment) 
-//                 VALUES (?, ?, ?)
-//             `;
-
-//             connection.query(insertQuery, [queryId, comment, !!is_admin], (err, results) => {
-//                 if (err) {
-//                     return res.status(500).json({
-//                         success: false,
-//                         message: "Error adding comment"
-//                     });
-//                 }
-
-//                 res.json({
-//                     success: true,
-//                     message: "Comment added successfully",
-//                     data: {
-//                         id: results.insertId,
-//                         query_id: queryId,
-//                         comment,
-//                         admin_comment: !!is_admin,
-//                         created_at: new Date()
-//                     }
-//                 });
-//             });
-//         });
-//     } catch (error) {
-//         console.error('Server error:', error);
-//         res.status(500).json({
-//             success: false,
-//             message: "Internal server error"
-//         });
-//     }
-// });
 
 
 
@@ -462,142 +276,9 @@ router.post('/submit', async (req, res) => {
 
 
 
-// //======================= Get query status and comments by ID =========
-// router.get('/:queryId', async (req, res) => {
-//     try {
-//         const { queryId } = req.params;
-
-//         const queryDetails = `
-//             SELECT q.*, 
-//                    GROUP_CONCAT(
-//                        JSON_OBJECT(
-//                            'id', c.id,
-//                            'comment', c.comment,
-//                            'admin_comment', c.admin_comment,
-//                            'created_at', c.created_at
-//                        )
-//                    ) as comments
-//             FROM user_queries q
-//             LEFT JOIN query_comments c ON q.id = c.query_id
-//             WHERE q.id = ?
-//             GROUP BY q.id
-//         `;
-
-//         connection.query(queryDetails, [queryId], (err, results) => {
-//             if (err) {
-//                 console.error('Database error:', err);
-//                 return res.status(500).json({
-//                     success: false,
-//                     message: "Error fetching query details"
-//                 });
-//             }
-
-//             if (results.length === 0) {
-//                 return res.status(404).json({
-//                     success: false,
-//                     message: "Query not found"
-//                 });
-//             }
-
-//             const query = results[0];
-//             query.comments = query.comments ? JSON.parse(`[${query.comments}]`) : [];
-
-//             res.json({
-//                 success: true,
-//                 data: query
-//             });
-//         });
-//     } catch (error) {
-//         console.error('Server error:', error);
-//         res.status(500).json({
-//             success: false,
-//             message: "Internal server error"
-//         });
-//     }
-// });
-
-// ============= Get all queries by user_id ==================
-// router.get('/user/:userId', async (req, res) => {
-//     try {
-//         const { userId } = req.params;
-
-//         // Step 1: Fetch all user queries with comment count
-//         const query = `
-//             SELECT q.*, 
-//                    COUNT(c.id) as comment_count
-//             FROM user_queries q
-//             LEFT JOIN query_comments c ON q.id = c.query_id
-//             WHERE q.user_id = ?
-//             GROUP BY q.id
-//             ORDER BY q.created_at DESC
-//         `;
-
-//         connection.query(query, [userId], (err, queries) => {
-//             if (err) {
-//                 console.error('Database error:', err);
-//                 return res.status(500).json({
-//                     success: false,
-//                     message: "Error fetching user queries"
-//                 });
-//             }
-
-//             // Step 2: If no queries, return early
-//             const queryIds = queries.map(q => q.id);
-//             if (queryIds.length === 0) {
-//                 return res.json({
-//                     success: true,
-//                     data: []
-//                 });
-//             }
-
-//             // Step 3: Fetch all comments for those queries
-//             const commentQuery = `
-//                 SELECT * FROM query_comments 
-//                 WHERE query_id IN (${queryIds.map(() => '?').join(',')})
-//                 ORDER BY created_at ASC
-//             `;
-
-//             connection.query(commentQuery, queryIds, (commentErr, comments) => {
-//                 if (commentErr) {
-//                     console.error('Comment fetch error:', commentErr);
-//                     return res.status(500).json({
-//                         success: false,
-//                         message: "Error fetching comments"
-//                     });
-//                 }
-
-//                 // Step 4: Group comments by query_id
-//                 const commentMap = {};
-//                 comments.forEach(c => {
-//                     if (!commentMap[c.query_id]) commentMap[c.query_id] = [];
-//                     commentMap[c.query_id].push(c);
-//                 });
-
-//                 // Step 5: Attach comments to corresponding queries
-//                 const finalData = queries.map(q => ({
-//                     ...q,
-//                     comments: commentMap[q.id] || []
-//                 }));
-
-//                 res.json({
-//                     success: true,
-//                     data: finalData
-//                 });
-//             });
-//         });
-//     } catch (error) {
-//         console.error('Server error:', error);
-//         res.status(500).json({
-//             success: false,
-//             message: "Internal server error"
-//         });
-//     }
-// });
 
 
-
-
-// ============= Get all queries by user_id UPDATED ==================
+// ============= Get all queries by user_id UPDATED with image ==================
 router.get('/user/:userId', async (req, res) => {
     try {
         const { userId } = req.params;
@@ -633,7 +314,7 @@ router.get('/user/:userId', async (req, res) => {
 
             // Step 3: Fetch all comments for those queries
             const commentQuery = `
-                SELECT id, query_id, comment, admin_comment, created_at
+                SELECT id, query_id, comment,image,admin_comment, created_at
                 FROM query_comments 
                 WHERE query_id IN (${queryIds.map(() => '?').join(',')})
                 ORDER BY created_at ASC
@@ -657,6 +338,7 @@ router.get('/user/:userId', async (req, res) => {
                     const formattedComment = {
                         id: c.id,
                         comment: c.comment,
+                        image: c.image,
                         role: c.admin_comment ? "admin" : "user",
                         created_at: c.created_at
                     };
@@ -685,60 +367,6 @@ router.get('/user/:userId', async (req, res) => {
     }
 });
 
-
-
-
-
-
-
-// ================================================
-
-// // ================= Add comment to query : user or admin ===============
-// router.post('/:queryId/comment', async (req, res) => {
-//     try {
-//         const { queryId } = req.params;
-//         const { comment, is_admin, parent_comment_id } = req.body;
-
-//         if (!comment || comment.trim() === "") {
-//             return res.status(400).json({ success: false, message: "Comment is required" });
-//         }
-
-//         // Check if query exists
-//         const checkQuery = "SELECT id FROM user_queries WHERE id = ?";
-//         connection.query(checkQuery, [queryId], (checkErr, checkResults) => {
-//             if (checkErr || checkResults.length === 0) {
-//                 return res.status(404).json({ success: false, message: "Query not found" });
-//             }
-
-//             // Insert comment
-//             const insertQuery = `
-//                 INSERT INTO query_comments 
-//                 (query_id, parent_comment_id, comment, admin_comment) 
-//                 VALUES (?, ?, ?, ?)
-//             `;
-//             connection.query(insertQuery, [queryId, parent_comment_id || null, comment, !!is_admin], (err, results) => {
-//                 if (err) {
-//                     return res.status(500).json({ success: false, message: "Error adding comment" });
-//                 }
-
-//                 res.json({
-//                     success: true,
-//                     message: "Comment added successfully",
-//                     data: {
-//                         id: results.insertId,
-//                         query_id: queryId,
-//                         parent_comment_id: parent_comment_id || null,
-//                         comment,
-//                         admin_comment: !!is_admin,
-//                         created_at: new Date()
-//                     }
-//                 });
-//             });
-//         });
-//     } catch (error) {
-//         res.status(500).json({ success: false, message: "Internal server error" });
-//     }
-// });
 
 
 
@@ -777,19 +405,17 @@ router.get('/user/:userId', async (req, res) => {
 
 
 
-
-
-// ================= Add comment to query (user/admin) UPDATED===============
+// ================= Add comment to query (user/admin) UPDATED WITH IMAGE ===============
 router.post('/:queryId/comment', async (req, res) => {
     try {
         const { queryId } = req.params;
-        const { comment, is_admin } = req.body;
+        const { comment, is_admin, image } = req.body; //
 
-        if (!comment || comment.trim() === "") {
-            return res.status(400).json({ success: false, message: "Comment is required" });
+        if ((!comment || comment.trim() === "") && (!image || image.trim() === "")) {
+            return res.status(400).json({ success: false, message: "Comment or image is required" });
         }
 
-          // Step 1: Query exist & status check
+        // Step 1: Query exist & status check
         const checkQuery = "SELECT id, status FROM user_queries WHERE id = ?";
         connection.query(checkQuery, [queryId], (checkErr, checkResults) => {
             if (checkErr || checkResults.length === 0) {
@@ -804,14 +430,13 @@ router.post('/:queryId/comment', async (req, res) => {
                 });
             }
 
-
-            // Insert comments
+            // Insert comments (with image)
             const insertQuery = `
                 INSERT INTO query_comments 
-                (query_id, comment, admin_comment) 
-                VALUES (?, ?, ?)
+                (query_id, comment, admin_comment, image) 
+                VALUES (?, ?, ?, ?)
             `;
-            connection.query(insertQuery, [queryId, comment, !!is_admin], (err, results) => {
+            connection.query(insertQuery, [queryId, comment || null, !!is_admin, image || null], (err, results) => {
                 if (err) {
                     return res.status(500).json({ success: false, message: "Error adding comment" });
                 }
@@ -822,7 +447,8 @@ router.post('/:queryId/comment', async (req, res) => {
                     data: {
                         id: results.insertId,
                         query_id: queryId,
-                        comment,
+                        comment: comment || null,
+                        image: image || null,
                         role: !!is_admin ? "admin" : "user",
                         created_at: new Date()
                     }
@@ -836,7 +462,8 @@ router.post('/:queryId/comment', async (req, res) => {
 
 
 
-// ======================= Get query details with all comments user/admin UPDATED =========
+
+// ======================= Get query details with all comments user/admin UPDATED with image =========
 router.get('/:queryId', async (req, res) => {
     try {
         const { queryId } = req.params;
@@ -847,7 +474,7 @@ router.get('/:queryId', async (req, res) => {
             if (queryResults.length === 0) return res.status(404).json({ success: false, message: "Query not found" });
 
             const commentQuery = `
-                SELECT id, query_id, comment, admin_comment, created_at
+                SELECT id, query_id, comment,image,admin_comment, created_at
                 FROM query_comments 
                 WHERE query_id = ? 
                 ORDER BY created_at ASC
@@ -858,6 +485,7 @@ router.get('/:queryId', async (req, res) => {
                 const formattedTimeline = comments.map(c => ({
                     id: c.id,
                     comment: c.comment,
+                    image: c.image,
                     role: c.admin_comment ? "admin" : "user",
                     created_at: c.created_at
                 }));

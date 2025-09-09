@@ -1,6 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const moment = require('moment');
+const momentTz = require("moment-timezone");
 const db = require("../config/db");
 const authenticateToken = require('../middleware/authenticateToken');
 
@@ -10,14 +11,26 @@ const authenticateToken = require('../middleware/authenticateToken');
 router.get('/report/today-recharge-summary', async (req, res) => {
   try {
     // Get today's start and end time
-    const start = moment().startOf('day').format('YYYY-MM-DD HH:mm:ss'); // 00:00:00
-    const end = moment().endOf('day').format('YYYY-MM-DD HH:mm:ss');     // 23:59:59
+    // const start = moment().startOf('day').format('YYYY-MM-DD HH:mm:ss'); // 00:00:00
+    // const end = moment().endOf('day').format('YYYY-MM-DD HH:mm:ss');     // 23:59:59
+    const start1 = new Date();
+start1.setHours(0, 0, 0, 0);
+
+// End of day (23:59:59 IST)
+const end1 = new Date();
+end1.setHours(23, 59, 59, 999);
+
+// Format to MySQL DATETIME string (YYYY-MM-DD HH:mm:ss)
+const formatDate = (d) =>
+  d.toISOString().slice(0, 19).replace('T', ' ');
+
+const start = formatDate(start1);
+const end = formatDate(end1);
 
     const query = `
       SELECT recharge_amount as amount
       FROM recharge
       WHERE recharge_status = 'success'
-        AND recharge_type = 'INR'
         AND date BETWEEN ? AND ?
     `;
 
@@ -54,11 +67,80 @@ router.get('/report/today-recharge-summary', async (req, res) => {
 });
 
 
+
+
+// //========================= get all recharge with pagination & status filter ==============
+// router.get("/get-all-recharges", async (req, res) => {
+//   try {
+//     let { page, limit, status } = req.query;
+
+//     page = parseInt(page) || 1;
+//     limit = parseInt(limit) || 50;
+//     const offset = (page - 1) * limit;
+
+//     // Base query
+//     let whereClause = "WHERE 1=1";
+//     const params = [];
+
+//     // Status filter (success/pending) - optional
+//     if (status && status !== "all") {
+//       whereClause += " AND recharge_status = ?";
+//       params.push(status);
+//     }
+
+//     // Main query
+//     const rows = await query(
+//       `
+//       SELECT 
+//         recharge_id,
+//         order_id,
+//         userId,
+//         recharge_amount AS amount,
+//         recharge_type AS type,
+//         payment_mode AS mode,
+//         recharge_status AS status,
+//         date,
+//         time
+//       FROM recharge
+//       ${whereClause}
+//       ORDER BY recharge_id DESC
+//       LIMIT ? OFFSET ?
+//       `,
+//       [...params, limit, offset]
+//     );
+
+//     //  Format date & time for IST
+//     const formattedRows = rows.map(r => ({
+//   ...r,
+//   date: r.date
+//     ? momentTz(r.date).tz("Asia/Kolkata").format("YYYY-MM-DD")
+//     : null,
+//   time: r.time || null, // keep DB time without converting
+// }));
+
+//     // Count query
+//     const countResult = await query(
+//       `SELECT COUNT(*) AS count FROM recharge ${whereClause}`,
+//       params
+//     );
+//     const totalCount = countResult[0].count;
+
+//     res.status(200).json({
+//       totalRecharges: totalCount,
+//       currentPage: page,
+//       totalPages: Math.ceil(totalCount / limit),
+//       data: formattedRows,
+//     });
+//   } catch (error) {
+//     console.error("Error fetching recharges:", error);
+//     res.status(500).json({ message: "Server error" });
+//   }
+// });
 //========================= get all recharge with pagination & status filter ==============
 router.get("/get-all-recharges", async (req, res) => {
   try {
     let { page, limit, status } = req.query;
-
+    
     page = parseInt(page) || 1;
     limit = parseInt(limit) || 50;
     const offset = (page - 1) * limit;
@@ -88,11 +170,62 @@ router.get("/get-all-recharges", async (req, res) => {
         time
       FROM recharge
       ${whereClause}
-      ORDER BY recharge_id DESC
+      ORDER BY date DESC
       LIMIT ? OFFSET ?
       `,
       [...params, limit, offset]
     );
+
+    // Format date & time for IST and add 30 minutes to time
+    const formattedRows = rows.map(r => {
+      let adjustedTime = null;
+      
+      // First, let's see what the actual time value is
+     // console.log('Original time value:', r.time, 'Type:', typeof r.time);
+      
+      if (r.time) {
+        try {
+          let timeString = r.time.toString();
+          
+          // Check if it's a valid time format (HH:mm:ss or HH:mm)
+          const timeRegex = /^(\d{1,2}):(\d{2})(:(\d{2}))?$/;
+          const match = timeString.match(timeRegex);
+          
+          if (match) {
+            let hours = parseInt(match[1]);
+            let minutes = parseInt(match[2]);
+            const seconds = match[4] ? parseInt(match[4]) : 0;
+            
+            // Add 30 minutes
+            minutes += 30;
+            if (minutes >= 60) {
+              hours += Math.floor(minutes / 60);
+              minutes = minutes % 60;
+            }
+            if (hours >= 24) {
+              hours = hours % 24;
+            }
+            
+            // Format back to HH:mm:ss
+            adjustedTime = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+          } else {
+            // If it doesn't match time format, try to use it as-is
+            adjustedTime = timeString;
+          }
+        } catch (error) {
+          console.warn(`Failed to parse time: ${r.time}`, error);
+          adjustedTime = r.time; // fallback to original time
+        }
+      }
+      
+      return {
+        ...r,
+        date: r.date
+          ? momentTz(r.date).tz("Asia/Kolkata").format("YYYY-MM-DD")
+          : null,
+        time: adjustedTime,
+      };
+    });
 
     // Count query
     const countResult = await query(
@@ -105,13 +238,16 @@ router.get("/get-all-recharges", async (req, res) => {
       totalRecharges: totalCount,
       currentPage: page,
       totalPages: Math.ceil(totalCount / limit),
-      data: rows,
+      data: formattedRows,
     });
   } catch (error) {
     console.error("Error fetching recharges:", error);
     res.status(500).json({ message: "Server error" });
   }
 });
+
+
+
 
 
 
@@ -175,6 +311,8 @@ router.get("/recharge-detail/:orderId", async (req, res) => {
 });
 
 
+
+
 //========================= filter recharges by Type and Mode ==============
 router.get("/get-all-recharges/sort", async (req, res) => {
   try {
@@ -190,14 +328,14 @@ router.get("/get-all-recharges/sort", async (req, res) => {
 
     // Apply filters if provided
     if (type) {
-  if (type.toLowerCase() === "usdt") {
-    whereClause += " AND LOWER(recharge_type) LIKE ?";
-    params.push("%usdt%");
-  } else {
-    whereClause += " AND LOWER(recharge_type) = ?";
-    params.push(type.toLowerCase());
-  }
-}
+      if (type.toLowerCase() === "usdt") {
+        whereClause += " AND LOWER(recharge_type) LIKE ?";
+        params.push("%usdt%");
+      } else {
+        whereClause += " AND LOWER(recharge_type) = ?";
+        params.push(type.toLowerCase());
+      }
+    }
 
     if (mode) {
       whereClause += " AND payment_mode = ?";
@@ -219,11 +357,22 @@ router.get("/get-all-recharges/sort", async (req, res) => {
         time
       FROM recharge
       ${whereClause}
-      ORDER BY recharge_id DESC
+      ORDER BY date DESC
       LIMIT ? OFFSET ?
       `,
       [...params, limit, offset]
     );
+
+    // Format date & time
+    const formattedRows = rows.map(r => ({
+      ...r,
+      date: r.date
+        ? momentTz(r.date).tz("Asia/Kolkata").format("YYYY-MM-DD")
+        : null,
+      time: r.time
+        ? momentTz(r.time, "HH:mm:ss").tz("Asia/Kolkata").format("HH:mm:ss")
+        : null,
+    }));
 
     // Count query
     const countResult = await query(
@@ -236,13 +385,14 @@ router.get("/get-all-recharges/sort", async (req, res) => {
       totalRecharges: totalCount,
       currentPage: page,
       totalPages: Math.ceil(totalCount / limit),
-      data: rows,
+      data: formattedRows,
     });
   } catch (error) {
     console.error("Error fetching recharges:", error);
     res.status(500).json({ message: "Server error" });
   }
 });
+
 
 
 

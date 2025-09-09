@@ -8,9 +8,11 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const moment = require('moment');
+const momentTz = require('moment-timezone');
 const { generateAccessToken, generateRefreshToken, verifyRefreshToken } = require('../utils/jwt');
 const authenticateToken = require('../middleware/authenticateToken');
 const { insertGameplayTracking } = require('../utils/gameplay');
+const { processDailyBettingCommissions } = require('../utils/commission');
 
 const router = express.Router();
 
@@ -122,7 +124,7 @@ const upload = multer({ storage });
 // });
 router.post('/deposit', async (req, res) => {
   const { userId, amount, cryptoname, orderid } = req.body;
-  const { calculateCommissions } = require('../utils/commission');
+
 
   const validCryptos = ['BTC', 'ETH', 'LTC', 'USDT', 'SOL', 'DOGE', 'BCH', 'XRP', 'TRX', 'EOS', 'INR', 'CP'];
 
@@ -210,17 +212,43 @@ router.post('/deposit', async (req, res) => {
     //   throw new Error(`Wallet entry for ${cryptoname} not found for the specified userId.`);
     // }
 
-    // Insert deposit with provided orderid
-    const insertDepositQuery = `
-      INSERT INTO deposits (userId, amount, orderid, cryptoname, is_first)
-      VALUES (?, ?, ?, ?, ?)
-    `;
-    const depositInsertResult = await new Promise((resolve, reject) => {
-      connection.query(insertDepositQuery, [userId, amount, orderid, cryptoname, isFirstDeposit], (err, results) => {
-        if (err) return reject(err);
-        resolve(results);
-      });
-    });
+   // Check recharge status before inserting deposit
+const rechargeQuery = `
+  SELECT date, time, recharge_status 
+  FROM recharge 
+  WHERE order_id = ? 
+  LIMIT 1
+`;
+
+const [rechargeResult] = await new Promise((resolve, reject) => {
+  connection.query(rechargeQuery, [orderid], (err, results) => {
+    if (err) return reject(err);
+    resolve(results);
+  });
+});
+
+if (!rechargeResult) {
+  throw new Error('No matching recharge found for this orderId.');
+}
+
+if (rechargeResult.recharge_status.toLowerCase() !== 'success') {
+  throw new Error('Recharge status is not success, cannot create deposit.');
+}
+
+const { date, time } = rechargeResult;
+
+// Insert deposit with recharge date and time
+const insertDepositQuery = `
+  INSERT INTO deposits (userId, amount, orderid, cryptoname, is_first, date, time)
+  VALUES (?, ?, ?, ?, ?, ?, ?)
+`;
+
+const depositInsertResult = await new Promise((resolve, reject) => {
+  connection.query(insertDepositQuery, [userId, amount, orderid, cryptoname, isFirstDeposit, date, time], (err, results) => {
+    if (err) return reject(err);
+    resolve(results);
+  });
+});
 
     
     const depositId = depositInsertResult.insertId;
@@ -229,36 +257,36 @@ router.post('/deposit', async (req, res) => {
       await insertGameplayTracking(userId, depositId, amount);
     }
 
-    // Handle referral commissions if first deposit
-    let commissionsDistributed = false;
-    if (isFirstDeposit) {
-      const referrerId = userResult.referred_by || null;
-      if (referrerId) {
-        const commissions = await calculateCommissions(amount, referrerId, cryptoname, connection);
-        for (const commission of commissions) {
-          const logQuery = `
-            INSERT INTO referralcommissionhistory 
-            (user_id, referred_user_id, level, rebate_level, amount, deposit_amount, cryptoname, credited)
-            VALUES (?, ?, ?, ?, ?, ?, ?, FALSE)
-          `;
-          await new Promise((resolve, reject) => {
-            connection.query(logQuery, [
-              commission.userId,
-              userId,
-              commission.level,
-              commission.rebateLevel,
-              commission.commission,
-              amount,
-              cryptoname
-            ], (err, results) => {
-              if (err) return reject(err);
-              resolve(results);
-            });
-          });
-        }
-        commissionsDistributed = true;
-      }
-    }
+    // // Handle referral commissions if first deposit
+    // let commissionsDistributed = false;
+    // if (isFirstDeposit) {
+    //   const referrerId = userResult.referred_by || null;
+    //   if (referrerId) {
+    //     const commissions = await calculateCommissions(amount, referrerId, cryptoname, connection);
+    //     for (const commission of commissions) {
+    //       const logQuery = `
+    //         INSERT INTO referralcommissionhistory 
+    //         (user_id, referred_user_id, level, rebate_level, amount, deposit_amount, cryptoname, credited)
+    //         VALUES (?, ?, ?, ?, ?, ?, ?, FALSE)
+    //       `;
+    //       await new Promise((resolve, reject) => {
+    //         connection.query(logQuery, [
+    //           commission.userId,
+    //           userId,
+    //           commission.level,
+    //           commission.rebateLevel,
+    //           commission.commission,
+    //           amount,
+    //           cryptoname
+    //         ], (err, results) => {
+    //           if (err) return reject(err);
+    //           resolve(results);
+    //         });
+    //       });
+    //     }
+    //     commissionsDistributed = true;
+    //   }
+    // }
 
     // Commit transaction
     await new Promise((resolve, reject) => {
@@ -268,6 +296,9 @@ router.post('/deposit', async (req, res) => {
       });
     });
 
+    const formattedDate = momentTz(date).tz("Asia/Kolkata").format("YYYY-MM-DD");
+   const formattedTime = time; 
+
     res.json({
       message: `Deposit in ${cryptoname} processed successfully`,
       userId,
@@ -276,8 +307,9 @@ router.post('/deposit', async (req, res) => {
       orderid,
       isFirstDeposit,
       cashbackAmount,
-      commissionsDistributed,
-      note: commissionsDistributed ? 'Commissions will be credited to wallets at 12:00 AM IST' : undefined
+      date: formattedDate,
+      time: formattedTime,
+      note: 'Commissions will be credited to wallets at 12:00 AM IST' 
     });
 
   } catch (error) {
@@ -692,15 +724,15 @@ router.get('/report/transactions', async (req, res) => {
         d.userId,
         d.amount,
         d.cryptoname,
-        d.created_at AS date,
+        d.date AS date,
         u.name,
         u.email,
         u.phone
       FROM deposits d
       LEFT JOIN users u ON d.userId = u.id
       WHERE d.cryptoname = 'INR'
-        AND d.created_at >= ? AND d.created_at <= ?
-      ORDER BY d.created_at DESC
+        AND d.date >= ? AND d.date <= ?
+      ORDER BY d.date DESC
     `;
 
     // --- WITHDRAWAL QUERY (with phone) ---
@@ -946,6 +978,17 @@ router.get('/test/run-cron', async (req, res) => {
 });
 
 
+// ==============test cron job to collect total bet================
+router.get('/bet-collect-cron', async (req, res) => {
+  try {
+    await  processDailyBettingCommissions();
+    res.send('Commission cron job executed successfully.');
+  } catch (err) {
+    console.error(" Cron Execution Failed:", err.message || err);
+    res.status(500).send(' Error in cron job');
+  }
+});
+
 
 //===== Get user's successful withdrawals and deposits in a date range ===
 router.get('/report/transactions/:userId', async (req, res) => {
@@ -979,14 +1022,14 @@ router.get('/report/transactions/:userId', async (req, res) => {
         d.userId,
         d.amount,
         d.cryptoname,
-        d.created_at AS date,
+        d.date AS date,
         u.name,
         u.email
       FROM deposits d
       LEFT JOIN users u ON d.userId = u.id
       WHERE d.userId = ? AND d.cryptoname = 'INR'
-        AND d.created_at >= ? AND d.created_at <= ?
-      ORDER BY d.created_at DESC
+        AND d.date >= ? AND d.date <= ?
+      ORDER BY d.date DESC
     `;
 
     // --- WITHDRAWAL QUERY (with cryptoname = INR) ---
@@ -1311,7 +1354,7 @@ router.get('/user-all-data/:userId', async (req, res) => {
       const q = `
         SELECT 
           SUM(amount) as total_deposit,
-          MIN(created_at) as first_deposit_date
+          MIN(date) as first_deposit_date
         FROM deposits
         WHERE userId = ?
       `;
@@ -1325,7 +1368,7 @@ router.get('/user-all-data/:userId', async (req, res) => {
     if (depositSummary.first_deposit_date) {
       const firstDepositRow = await new Promise((resolve, reject) => {
         connection.query(
-          "SELECT amount FROM deposits WHERE userId = ? ORDER BY created_at ASC LIMIT 1",
+          "SELECT amount FROM deposits WHERE userId = ? ORDER BY date ASC LIMIT 1",
           [userId],
           (err, results) => {
             if (err) return reject(err);
@@ -1410,14 +1453,14 @@ router.get('/game-transactions/:userId', async (req, res) => {
         });
       }
 
-      // Query to get total transactions
+      // Query to get total transactions from both tables
       const countQuery = `
-        SELECT COUNT(*) as total 
-        FROM api_turnover 
-        WHERE login = ?
+        SELECT 
+          (SELECT COUNT(*) FROM api_turnover WHERE login = ?) as api_total,
+          (SELECT COUNT(*) FROM huidu_txn WHERE userid = ? AND bet_amount > 0) as huidu_total
       `; 
 
-      connection.query(countQuery, [userId], (countErr, countResult) => {
+      connection.query(countQuery, [userId, userId], (countErr, countResult) => {
         if (countErr) {
           console.error('Count query error:', countErr);
           return res.status(500).json({
@@ -1427,11 +1470,13 @@ router.get('/game-transactions/:userId', async (req, res) => {
           });
         }
 
-        const totalRecords = countResult[0].total;
+        const apiTotal = countResult[0].api_total;
+        const huiduTotal = countResult[0].huidu_total;
+        const totalRecords = apiTotal + huiduTotal;
         const totalPages = Math.ceil(totalRecords / limit);
 
-        // Query to get paginated transactions
-        const transactionQuery = `
+        // Query to get paginated transactions from api_turnover table
+        const apiTransactionQuery = `
           SELECT 
             id as transaction_id,
             cmd as transaction_type,
@@ -1452,32 +1497,79 @@ router.get('/game-transactions/:userId', async (req, res) => {
           LIMIT ? OFFSET ?
         `;
 
-        connection.query(transactionQuery, [userId, limit, offset], (txErr, txResult) => {
-          if (txErr) {
-            console.error('Transaction query error:', txErr);
+        // Query to get paginated transactions from huidu_txn table
+        const huiduTransactionQuery = `
+          SELECT 
+            id as transaction_id,
+            'game_bet' as transaction_type,
+            serial_number as sessionId,
+            bet_amount,
+            DATE(created_at) as bet_date,
+            game_uid as gameId,
+            win_amount as winning_amount,
+            created_at,
+            CASE
+              WHEN win_amount = 0 THEN 'lost'
+              ELSE 'won'
+            END as status
+          FROM huidu_txn 
+          WHERE userid = ? AND bet_amount > 0
+          ORDER BY created_at DESC
+          LIMIT ? OFFSET ?
+        `;
+
+        // Execute both queries
+        connection.query(apiTransactionQuery, [userId, limit, offset], (apiErr, apiResult) => {
+          if (apiErr) {
+            console.error('API transaction query error:', apiErr);
             return res.status(500).json({
               success: false,
-              message: "Error fetching transactions",
-              error: txErr.message
+              message: "Error fetching API transactions",
+              error: apiErr.message
             });
           }
-          // Format transaction amounts because they might be strings
-          const transactions = txResult.map(tx => ({
-            ...tx,
-            bet_amount: parseFloat(tx.bet_amount || 0),
-            winning_amount: parseFloat(tx.winning_amount || 0)
-          }));
 
-          res.json({
-            success: true,
-            message: "Game transactions retrieved successfully",
-            pagination: {
-              total_records: totalRecords,
-              total_pages: totalPages,
-              current_page: page,
-              limit: limit
-            },
-            transactions
+          connection.query(huiduTransactionQuery, [userId, limit, offset], (huiduErr, huiduResult) => {
+            if (huiduErr) {
+              console.error('Huidu transaction query error:', huiduErr);
+              return res.status(500).json({
+                success: false,
+                message: "Error fetching Huidu transactions",
+                error: huiduErr.message
+              });
+            }
+            
+            // Format API transaction amounts
+            const apiTransactions = apiResult.map(tx => ({
+              ...tx,
+              bet_amount: parseFloat(tx.bet_amount || 0),
+              winning_amount: parseFloat(tx.winning_amount || 0)
+            }));
+
+            // Format Huidu transaction amounts
+            const huiduTransactions = huiduResult.map(tx => ({
+              ...tx,
+              bet_amount: parseFloat(tx.bet_amount || 0),
+              winning_amount: parseFloat(tx.winning_amount || 0)
+            }));
+
+            // Combine both datasets and sort by created_at
+            const allTransactions = [...apiTransactions, ...huiduTransactions]
+              .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
+            res.json({
+              success: true,
+              message: "Game transactions retrieved successfully",
+              pagination: {
+                total_records: totalRecords,
+                total_pages: totalPages,
+                current_page: page,
+                limit: limit,
+                api_turnover_count: apiTotal,
+                huidu_txn_count: huiduTotal
+              },
+              transactions: allTransactions
+            });
           });
         });
       });
@@ -2110,6 +2202,102 @@ router.get('/user-bet-stats/:userId', async (req, res) => {
 });
 
 
+// //============== Get user's transaction history=============
+// router.get('/transactions/:userId', async (req, res) => {
+//   try {
+//     const { userId } = req.params;
+
+//     // First check if user exists
+//     const userQuery = "SELECT id, username FROM users WHERE id = ?";
+//     const [user] = await new Promise((resolve, reject) => {
+//       connection.query(userQuery, [userId], (err, results) => {
+//         if (err) reject(err);
+//         resolve(results);
+//       });
+//     });
+
+//     if (!user) {
+//       return res.status(404).json({
+//         success: false,
+//         message: "User not found"
+//       });
+//     }
+
+//     // Get recharge history
+//     const rechargeQuery = `
+//             SELECT 
+//                 'recharge' as transaction_type,
+//                 recharge_id as id,
+//                 order_id,
+//                 recharge_amount as amount,
+//                 recharge_type as type,
+//                 payment_mode,
+//                 recharge_status as status,
+//                 CONCAT(date, ' ', time) as transaction_date
+//             FROM recharge 
+//             WHERE userId = ?`;
+
+//     // Get withdrawal history
+//     const withdrawalQuery = `
+//             SELECT 
+//                 'withdrawal' as transaction_type,
+//                 id,
+//                 balance as amount,
+//                 cryptoname as type,
+//                 reject_note as   note,
+//                 CASE 
+//                     WHEN status = 0 THEN 'pending'
+//                     WHEN status = 1 THEN 'approved'
+//                     WHEN status = 2 THEN 'rejected'
+//                 END as status,
+//                 NULL as order_id,
+//                 NULL as payment_mode,
+//                 DATE_FORMAT(NOW(), '%Y-%m-%d %H:%i:%s') as transaction_date
+//             FROM withdrawl 
+//             WHERE userId = ?`;
+
+//     // Execute both queries
+//     const [recharges, withdrawals] = await Promise.all([
+//       new Promise((resolve, reject) => {
+//         connection.query(rechargeQuery, [userId], (err, results) => {
+//           if (err) reject(err);
+//           resolve(results);
+//         });
+//       }),
+//       new Promise((resolve, reject) => {
+//         connection.query(withdrawalQuery, [userId], (err, results) => {
+//           if (err) reject(err);
+//           resolve(results);
+//         });
+//       })
+//     ]);
+
+//     // Combine and sort all transactions by date
+//     const allTransactions = [...recharges, ...withdrawals]
+//       .sort((a, b) => new Date(b.transaction_date) - new Date(a.transaction_date));
+
+//     res.json({
+//       success: true,
+//       user: {
+//         id: user.id,
+//         username: user.username
+//       },
+//       transactions: allTransactions.map(transaction => ({
+//         ...transaction,
+//         transaction_date: new Date(transaction.transaction_date).toLocaleString()
+//       }))
+//     });
+
+//   } catch (error) {
+//     console.error('Error fetching transaction history:', error);
+//     res.status(500).json({
+//       success: false,
+//       message: 'Error fetching transaction history',
+//       error: error.message
+//     });
+//   }
+// });
+
 //============== Get user's transaction history=============
 router.get('/transactions/:userId', async (req, res) => {
   try {
@@ -2131,41 +2319,60 @@ router.get('/transactions/:userId', async (req, res) => {
       });
     }
 
-    // Get recharge history
+    // Recharge history
     const rechargeQuery = `
-            SELECT 
-                'recharge' as transaction_type,
-                recharge_id as id,
-                order_id,
-                recharge_amount as amount,
-                recharge_type as type,
-                payment_mode,
-                recharge_status as status,
-                CONCAT(date, ' ', time) as transaction_date
-            FROM recharge 
-            WHERE userId = ?`;
+      SELECT 
+          'recharge' as transaction_type,
+          recharge_id as id,
+          order_id,
+          recharge_amount as amount,
+          recharge_type as type,
+          payment_mode,
+          recharge_status as status,
+          created_at as transaction_date,
+          NULL as note
+      FROM recharge 
+      WHERE userId = ?
+    `;
 
-    // Get withdrawal history
+    // Withdrawal history
     const withdrawalQuery = `
-            SELECT 
-                'withdrawal' as transaction_type,
-                id,
-                balance as amount,
-                cryptoname as type,
-                reject_note as   note,
-                CASE 
-                    WHEN status = 0 THEN 'pending'
-                    WHEN status = 1 THEN 'approved'
-                    WHEN status = 2 THEN 'rejected'
-                END as status,
-                NULL as order_id,
-                NULL as payment_mode,
-                DATE_FORMAT(NOW(), '%Y-%m-%d %H:%i:%s') as transaction_date
-            FROM withdrawl 
-            WHERE userId = ?`;
+      SELECT 
+          'withdrawal' as transaction_type,
+          id,
+          balance as amount,
+          cryptoname as type,
+          reject_note as note,
+          CASE 
+              WHEN status = 0 THEN 'pending'
+              WHEN status = 1 THEN 'approved'
+              WHEN status = 2 THEN 'rejected'
+          END as status,
+          NULL as order_id,
+          NULL as payment_mode,
+          createdOn as transaction_date
+      FROM withdrawl 
+      WHERE userId = ?
+    `;
 
-    // Execute both queries
-    const [recharges, withdrawals] = await Promise.all([
+    // Bonus transfer history
+    const bonusQuery = `
+      SELECT 
+          'bonus_transfer' as transaction_type,
+          id,
+          amount,
+          'bonus' as type,
+          'bonus transfer' as note,
+          'completed' as status,
+          NULL as order_id,
+          NULL as payment_mode,
+          created_at as transaction_date
+      FROM bonus_transfer_history
+      WHERE userId = ?
+    `;
+
+    // Execute all queries in parallel
+    const [recharges, withdrawals, bonusTransfers] = await Promise.all([
       new Promise((resolve, reject) => {
         connection.query(rechargeQuery, [userId], (err, results) => {
           if (err) reject(err);
@@ -2177,11 +2384,18 @@ router.get('/transactions/:userId', async (req, res) => {
           if (err) reject(err);
           resolve(results);
         });
+      }),
+      new Promise((resolve, reject) => {
+        connection.query(bonusQuery, [userId], (err, results) => {
+          if (err) reject(err);
+          resolve(results);
+        });
       })
     ]);
 
-    // Combine and sort all transactions by date
-    const allTransactions = [...recharges, ...withdrawals]
+    // Combine and sort
+    const allTransactions = [...recharges, ...withdrawals, ...bonusTransfers]
+      .filter(t => t.transaction_date) 
       .sort((a, b) => new Date(b.transaction_date) - new Date(a.transaction_date));
 
     res.json({
@@ -2206,20 +2420,112 @@ router.get('/transactions/:userId', async (req, res) => {
   }
 });
 
+
+
+
 //--------------------------------------- Protected Routes----------------------
 
-router.use(authenticateToken);
+//router.use(authenticateToken);
 
 //----------------------------------------------------------------------------------
 
 
 
+// router.get("/referrals/today-summary/:userId", async (req, res) => {
+//   const { userId } = req.params;
+//   const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+
+//   try {
+//     // 1. Check user existence
+//     const [userCheck] = await new Promise((resolve, reject) => {
+//       connection.query("SELECT id FROM users WHERE id = ?", [userId], (err, results) => {
+//         if (err) return reject(err);
+//         resolve(results);
+//       });
+//     });
+
+//     if (!userCheck) {
+//       return res.status(404).json({ success: false, message: "User not found" });
+//     }
+
+//     // 2. Get today's referral summary
+//     const summary = await new Promise((resolve, reject) => {
+//       const sql = `
+//         SELECT 
+//           u.id,
+//           u.name,
+//           u.username,
+//           u.email,
+//           r.level,
+//           (SELECT d.amount FROM deposits d WHERE d.userId = u.id AND DATE(d.date) = ? ORDER BY d.date ASC LIMIT 1) AS first_deposit,
+//           (SELECT SUM(d.amount) FROM deposits d WHERE d.userId = u.id AND DATE(d.date) = ?) AS total_deposit,
+//           (SELECT SUM(b.amount) FROM bets b WHERE b.user_id = u.id) AS total_bets,            
+//           (SELECT IFNULL(SUM(c.amount), 0) FROM referralcommissionhistory c WHERE c.user_id = ? AND c.referred_user_id = u.id AND c.credited = 0) AS pending_commission
+//         FROM referrals r 
+//         JOIN users u ON r.referred_id = u.id
+//         WHERE r.referrer_id = ?
+//         AND DATE(u.created_at) = ?
+//         ORDER BY r.level
+//       `;
+
+//       connection.query(sql, [today, today, userId, userId, today], (err, results) => {
+//         if (err) return reject(err);
+//         resolve(results);
+//       });
+//     });
+
+//     // 3. Group by level
+//     const referralsByLevel = {
+//       level1: [],
+//       level2: [],
+//       level3: [],
+//       level4: [],
+//       level5: []
+//     };
+
+//     for (const row of summary) {
+//       const levelKey = `level${row.level}`;
+//       referralsByLevel[levelKey].push({
+//         id: row.id,
+//         name: row.name,
+//         username: row.username,
+//         email: row.email,
+//         level: row.level,
+//         first_deposit: parseFloat(row.first_deposit || 0).toFixed(2),
+//         total_deposit: parseFloat(row.total_deposit || 0).toFixed(2),
+//         total_bets: row.total_bets ? parseFloat(row.total_bets).toFixed(2) : null,
+//         pending_commission: parseFloat(row.pending_commission || 0).toFixed(2)
+//       });
+//     }
+
+//     const totalReferrals = summary.length;
+
+//     res.json({
+//       userId,
+//       totalReferrals,
+//       referralsByLevel
+//     });
+
+//   } catch (err) {
+//     console.error(err);
+//     res.status(500).json({ message: "Server error" });
+//   }
+// });
+
+
+
+
+
+//================== Get referral summary for yesterday ================
 router.get("/referrals/today-summary/:userId", async (req, res) => {
   const { userId } = req.params;
-  const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+
+const yesterday = new Date();
+yesterday.setDate(yesterday.getDate() - 1);
+const yesterdayStr = yesterday.toLocaleDateString('en-CA');
 
   try {
-    // 1. Check user existence
+    // 1. User check
     const [userCheck] = await new Promise((resolve, reject) => {
       connection.query("SELECT id FROM users WHERE id = ?", [userId], (err, results) => {
         if (err) return reject(err);
@@ -2231,7 +2537,7 @@ router.get("/referrals/today-summary/:userId", async (req, res) => {
       return res.status(404).json({ success: false, message: "User not found" });
     }
 
-    // 2. Get today's referral summary
+    // 2. Get referrals (without date filter)
     const summary = await new Promise((resolve, reject) => {
       const sql = `
         SELECT 
@@ -2240,52 +2546,113 @@ router.get("/referrals/today-summary/:userId", async (req, res) => {
           u.username,
           u.email,
           r.level,
-          (SELECT d.amount FROM deposits d WHERE d.userId = u.id AND DATE(d.created_at) = ? ORDER BY d.created_at ASC LIMIT 1) AS first_deposit,
-          (SELECT SUM(d.amount) FROM deposits d WHERE d.userId = u.id AND DATE(d.created_at) = ?) AS total_deposit,
-          (SELECT SUM(b.amount) FROM bets b WHERE b.user_id = u.id) AS total_bets,            
-          (SELECT IFNULL(SUM(c.amount), 0) FROM referralcommissionhistory c WHERE c.user_id = ? AND c.referred_user_id = u.id AND c.credited = 0) AS pending_commission
+          u.created_at,
+          (
+            SELECT d.amount 
+            FROM deposits d 
+            WHERE d.userId = u.id 
+            ORDER BY d.date ASC LIMIT 1
+          ) AS overall_first_deposit,
+          (
+            SELECT d.amount 
+            FROM deposits d 
+            WHERE d.userId = u.id 
+              AND DATE(d.date) = ? 
+            ORDER BY d.date ASC LIMIT 1
+          ) AS yesterday_first_deposit,
+          (
+            SELECT SUM(d.amount) 
+            FROM deposits d 
+            WHERE d.userId = u.id AND DATE(d.date) = ?
+          ) AS yesterday_total_deposit,
+          (SELECT SUM(b.amount) FROM bets b WHERE b.user_id = u.id) AS total_bets,
+          (
+            SELECT IFNULL(SUM(c.amount), 0) 
+            FROM referralcommissionhistory c 
+            WHERE c.user_id = ? AND c.referred_user_id = u.id AND c.credited = 0
+          ) AS pending_commission
         FROM referrals r 
         JOIN users u ON r.referred_id = u.id
         WHERE r.referrer_id = ?
-        AND DATE(u.created_at) = ?
         ORDER BY r.level
       `;
 
-      connection.query(sql, [today, today, userId, userId, today], (err, results) => {
+      connection.query(sql, [yesterdayStr, yesterdayStr, userId, userId], (err, results) => {
         if (err) return reject(err);
         resolve(results);
       });
     });
 
-    // 3. Group by level
-    const referralsByLevel = {
-      level1: [],
-      level2: [],
-      level3: [],
-      level4: [],
-      level5: []
-    };
+   const teamSubordinatCount = await new Promise((resolve, reject) => {
+      const sql = `
+       SELECT COUNT(u.id) AS teamSubordinates
+        FROM referrals r
+        JOIN users u ON r.referred_id = u.id
+        WHERE r.referrer_id = ? AND  r.level > 1
+        AND DATE(created_at) = DATE(DATE_SUB(NOW(), INTERVAL 1 DAY))   
+      `;
+      connection.query(sql, [userId], (err, results) => {
+        if (err) return reject(err);
+        resolve(results[0]?.teamSubordinates || 0);
+      });
+    });  
+  
+
+    // 3. Process
+    const referralsByLevel = { level1: [], level2: [], level3: [], level4: [], level5: [] };
+
+    let totalFirstDeposit = 0;
+    let totalDeposit = 0;
+    let firstDepositorsCount = 0;
+    let totalReferrals = 0;
 
     for (const row of summary) {
       const levelKey = `level${row.level}`;
+
+      //  count only referrals created yesterday
+     if (
+  row.created_at &&
+  new Date(row.created_at).toLocaleDateString('en-CA') === yesterdayStr
+) {
+  totalReferrals++;
+}
+  
+      //  first deposit check
+      let firstDeposit = 0;
+      if (row.yesterday_first_deposit && row.yesterday_first_deposit == row.overall_first_deposit) {
+        firstDeposit = parseFloat(row.yesterday_first_deposit);
+        totalFirstDeposit += firstDeposit;
+        firstDepositorsCount++;
+      }
+
+      //  total deposit yesterday
+      let yesterdayDeposit = row.yesterday_total_deposit ? parseFloat(row.yesterday_total_deposit) : 0;
+      totalDeposit += yesterdayDeposit;
+
+
+      
       referralsByLevel[levelKey].push({
         id: row.id,
         name: row.name,
         username: row.username,
         email: row.email,
         level: row.level,
-        first_deposit: parseFloat(row.first_deposit || 0).toFixed(2),
-        total_deposit: parseFloat(row.total_deposit || 0).toFixed(2),
+        first_deposit: firstDeposit.toFixed(2),
+        total_deposit: yesterdayDeposit.toFixed(2),
         total_bets: row.total_bets ? parseFloat(row.total_bets).toFixed(2) : null,
         pending_commission: parseFloat(row.pending_commission || 0).toFixed(2)
       });
     }
 
-    const totalReferrals = summary.length;
-
+    // 4. Response
     res.json({
+      date: yesterdayStr,
       userId,
-      totalReferrals,
+      totalReferrals, // only those who joined yesterday
+      teamSubordinat: teamSubordinatCount,
+      totalFirstDeposit: totalFirstDeposit.toFixed(2),
+      totalDeposit: totalDeposit.toFixed(2),
+      firstDepositorsCount,
       referralsByLevel
     });
 
@@ -2295,96 +2662,697 @@ router.get("/referrals/today-summary/:userId", async (req, res) => {
   }
 });
 
+
+
+
+
+// router.get("/referralsbydate/:userId", async (req, res) => {
+//   const { userId } = req.params;
+//   const { dateType } = req.query;
+
+//   // Optional date filter logic
+// const getDateRange = (type) => {
+//   let startDate, endDate;
+
+//   switch (type) {
+//     case "today":
+//       startDate = moment().startOf("day").format("YYYY-MM-DD");
+//       endDate = moment().endOf("day").format("YYYY-MM-DD");
+//       break;
+
+//     case "yesterday":
+//       startDate = moment().subtract(1, "days").startOf("day").format("YYYY-MM-DD");
+//       endDate = moment().subtract(1, "days").endOf("day").format("YYYY-MM-DD");
+//       break;
+
+//     case "lastMonth":
+//       startDate = moment().subtract(30, "days").format("YYYY-MM-DD");
+//       endDate = moment().format("YYYY-MM-DD");
+//       break;
+
+//     default:
+//       startDate = null;
+//       endDate = null;
+//   }
+
+//   return { startDate, endDate };
+// };
+
+//   const { startDate, endDate } = getDateRange(dateType);
+
+//   try {
+//     const referrals = await new Promise((resolve, reject) => {
+//       let sql = `
+//         SELECT 
+//           u.id,
+//           u.name,
+//           u.username,
+//           u.email,
+//           DATE(u.created_at) AS join_date,
+//           r.level,
+//           (SELECT d.amount FROM deposits d WHERE d.userId = u.id ORDER BY d.date ASC LIMIT 1) AS first_deposit,
+//           (SELECT SUM(d.amount) FROM deposits d WHERE d.userId = u.id) AS total_deposit,
+//           (SELECT SUM(b.amount) FROM bets b WHERE b.user_id = u.id) AS total_bets,
+//           (SELECT IFNULL(SUM(c.amount), 0) FROM referralcommissionhistory c 
+//             WHERE c.user_id = ? AND c.referred_user_id = u.id AND c.credited = 0) AS pending_commission
+//         FROM referrals r 
+//         JOIN users u ON r.referred_id = u.id 
+//         WHERE r.referrer_id = ?
+//       `;
+
+//       const params = [userId, userId];
+
+//       if (startDate && endDate) {
+//         sql += ` AND DATE(u.created_at) BETWEEN ? AND ?`;
+//         params.push(startDate, endDate);
+//       }
+
+//       sql += ` ORDER BY r.level`;
+
+//       connection.query(sql, params, (err, results) => {
+//         if (err) return reject(err);
+//         resolve(results);
+//       });
+//     });
+
+//     // Group referrals by level
+//     const referralsByLevel = {};
+//     for (let i = 1; i <= 5; i++) {
+//       referralsByLevel[`level${i}`] = referrals.filter(ref => ref.level === i);
+//     }
+
+//     res.json({
+//       userId,
+//       dateType: dateType || "all",
+//       dateRange: startDate ? { startDate, endDate } : "All Time",
+//       totalReferrals: referrals.length,
+//       referralsByLevel
+//     });
+
+//   } catch (err) {
+//     console.error(err);
+//     res.status(500).json({ message: "Server error" });
+//   }
+// });
+
+
+
+// router.get("/referralsbydate/:userId", async (req, res) => {
+//   const { userId } = req.params;
+//   const { dateType } = req.query;
+
+//   // Date range logic
+//   const getDateRange = (type) => {
+//     let startDate, endDate;
+
+//     switch (type) {
+//       case "today":
+//         startDate = moment().startOf("day").format("YYYY-MM-DD");
+//         endDate = moment().endOf("day").format("YYYY-MM-DD");
+//         break;
+
+//       case "yesterday":
+//         startDate = moment().subtract(1, "days").startOf("day").format("YYYY-MM-DD");
+//         endDate = moment().subtract(1, "days").endOf("day").format("YYYY-MM-DD");
+//         break;
+
+//       case "lastMonth":
+//         startDate = moment().subtract(30, "days").format("YYYY-MM-DD");
+//         endDate = moment().format("YYYY-MM-DD");
+//         break;
+
+//       default:
+//         startDate = null;
+//         endDate = null;
+//     }
+
+//     return { startDate, endDate };
+//   };
+
+//   const { startDate, endDate } = getDateRange(dateType);
+
+//   try {
+//     const referrals = await new Promise((resolve, reject) => {
+//       let sql = `
+//         SELECT 
+//           u.id,
+//           u.name,
+//           u.username,
+//           u.email,
+//           u.created_at,
+//           r.level,
+//           (SELECT d.amount FROM deposits d WHERE d.userId = u.id ORDER BY d.date ASC LIMIT 1) AS overall_first_deposit,
+//           (
+//             SELECT d.amount 
+//             FROM deposits d 
+//             WHERE d.userId = u.id 
+//               ${startDate && endDate ? `AND DATE(d.date) BETWEEN ? AND ?` : ""}
+//             ORDER BY d.date ASC LIMIT 1
+//           ) AS range_first_deposit,
+//           (
+//             SELECT SUM(d.amount) 
+//             FROM deposits d 
+//             WHERE d.userId = u.id
+//               ${startDate && endDate ? `AND DATE(d.date) BETWEEN ? AND ?` : ""}
+//           ) AS range_total_deposit,
+//           (SELECT SUM(b.amount) FROM bets b WHERE b.user_id = u.id) AS total_bets,
+//           (SELECT IFNULL(SUM(c.amount), 0) 
+//            FROM referralcommissionhistory c 
+//            WHERE c.user_id = ? AND c.referred_user_id = u.id AND c.credited = 0
+//           ) AS pending_commission
+//         FROM referrals r 
+//         JOIN users u ON r.referred_id = u.id 
+//         WHERE r.referrer_id = ?
+//         ${startDate && endDate ? `AND DATE(u.created_at) BETWEEN ? AND ?` : ""}
+//         ORDER BY r.level
+//       `;
+
+//       const params = [];
+//       if (startDate && endDate) {
+//         params.push(startDate, endDate); // for range_first_deposit
+//         params.push(startDate, endDate); // for range_total_deposit
+//       }
+//       params.push(userId, userId); // pending_commission + referrer_id
+//       if (startDate && endDate) {
+//         params.push(startDate, endDate); // for u.created_at filter
+//       }
+
+//       connection.query(sql, params, (err, results) => {
+//         if (err) return reject(err);
+//         resolve(results);
+//       });
+//     });
+
+//     // Totals & Grouping
+//     const referralsByLevel = { level1: [], level2: [], level3: [], level4: [], level5: [] };
+
+//     let totalFirstDeposit = 0;
+//     let totalDeposit = 0;
+//     let firstDepositorsCount = 0;
+//     let totalReferrals = 0;
+
+//     for (const row of referrals) {
+//       const levelKey = `level${row.level}`;
+//       totalReferrals++; // ab SQL already filter kar raha hai
+
+//       // check if this referral's first deposit falls in this range
+//       let firstDeposit = 0;
+//       if (row.range_first_deposit && row.range_first_deposit == row.overall_first_deposit) {
+//         firstDeposit = parseFloat(row.range_first_deposit);
+//         totalFirstDeposit += firstDeposit;
+//         firstDepositorsCount++;
+//       }
+
+//       let rangeDeposit = row.range_total_deposit ? parseFloat(row.range_total_deposit) : 0;
+//       totalDeposit += rangeDeposit;
+
+//       referralsByLevel[levelKey].push({
+//         id: row.id,
+//         name: row.name,
+//         username: row.username,
+//         email: row.email,
+//         level: row.level,
+//         first_deposit: firstDeposit.toFixed(2),
+//         total_deposit: rangeDeposit.toFixed(2),
+//         total_bets: row.total_bets ? parseFloat(row.total_bets).toFixed(2) : null,
+//         pending_commission: parseFloat(row.pending_commission || 0).toFixed(2)
+//       });
+//     }
+
+//     res.json({
+//       userId,
+//       dateType: dateType || "all",
+//       dateRange: startDate ? { startDate, endDate } : "All Time",
+//       totalReferrals,
+//       totalFirstDeposit: totalFirstDeposit.toFixed(2),
+//       totalDeposit: totalDeposit.toFixed(2),
+//       firstDepositorsCount,
+//       referralsByLevel
+//     });
+
+//   } catch (err) {
+//     console.error(err);
+//     res.status(500).json({ message: "Server error" });
+//   }
+// });
+
 router.get("/referralsbydate/:userId", async (req, res) => {
+  // Set timeout for this route to prevent 504 errors
+  req.setTimeout(300000); // 5 minutes
+  res.setTimeout(300000); // 5 minutes
+  
   const { userId } = req.params;
   const { dateType } = req.query;
 
-  // Optional date filter logic
-const getDateRange = (type) => {
-  let startDate, endDate;
+  // Updated date range logic
+  const getDateRange = (type) => {
+    let startDate, endDate;
 
-  switch (type) {
-    case "today":
-      startDate = moment().startOf("day").format("YYYY-MM-DD");
-      endDate = moment().endOf("day").format("YYYY-MM-DD");
-      break;
+    switch (type) {
+      case "today":
+        const today = new Date();
+        startDate = today.toLocaleDateString("en-CA");
+        endDate = today.toLocaleDateString("en-CA");
+        break;
 
-    case "yesterday":
-      startDate = moment().subtract(1, "days").startOf("day").format("YYYY-MM-DD");
-      endDate = moment().subtract(1, "days").endOf("day").format("YYYY-MM-DD");
-      break;
+      case "yesterday":
+        const yesterday = new Date();
+        yesterday.setDate(yesterday.getDate() - 1);
+        startDate = yesterday.toLocaleDateString("en-CA");
+        endDate = yesterday.toLocaleDateString("en-CA");
+        break;
 
-    case "lastMonth":
-      startDate = moment().subtract(30, "days").format("YYYY-MM-DD");
-      endDate = moment().format("YYYY-MM-DD");
-      break;
+      case "lastMonth":
+        const endDateMoment = new Date();
+        const startDateMoment = new Date();
+        startDateMoment.setDate(startDateMoment.getDate() - 30);
+        startDate = startDateMoment.toLocaleDateString("en-CA");
+        endDate = endDateMoment.toLocaleDateString("en-CA");
+        break;
 
-    default:
-      startDate = null;
-      endDate = null;
-  }
+      default:
+        startDate = null;
+        endDate = null;
+    }
 
-  return { startDate, endDate };
-};
+    return { startDate, endDate };
+  };
 
   const { startDate, endDate } = getDateRange(dateType);
 
   try {
-    const referrals = await new Promise((resolve, reject) => {
-      let sql = `
-        SELECT 
-          u.id,
-          u.name,
-          u.username,
-          u.email,
-          DATE(u.created_at) AS join_date,
-          r.level,
-          (SELECT d.amount FROM deposits d WHERE d.userId = u.id ORDER BY d.created_at ASC LIMIT 1) AS first_deposit,
-          (SELECT SUM(d.amount) FROM deposits d WHERE d.userId = u.id) AS total_deposit,
-          (SELECT SUM(b.amount) FROM bets b WHERE b.user_id = u.id) AS total_bets,
-          (SELECT IFNULL(SUM(c.amount), 0) FROM referralcommissionhistory c 
-            WHERE c.user_id = ? AND c.referred_user_id = u.id AND c.credited = 0) AS pending_commission
-        FROM referrals r 
-        JOIN users u ON r.referred_id = u.id 
-        WHERE r.referrer_id = ?
-      `;
-
-      const params = [userId, userId];
-
-      if (startDate && endDate) {
-        sql += ` AND DATE(u.created_at) BETWEEN ? AND ?`;
-        params.push(startDate, endDate);
-      }
-
-      sql += ` ORDER BY r.level`;
-
-      connection.query(sql, params, (err, results) => {
+    // User check
+    const [userCheck] = await new Promise((resolve, reject) => {
+      connection.query("SELECT id FROM users WHERE id = ?", [userId], (err, results) => {
         if (err) return reject(err);
         resolve(results);
       });
     });
 
-    // Group referrals by level
-    const referralsByLevel = {};
-    for (let i = 1; i <= 5; i++) {
-      referralsByLevel[`level${i}`] = referrals.filter(ref => ref.level === i);
+    if (!userCheck) {
+      return res.status(404).json({ success: false, message: "User not found" });
     }
 
+    // ================= Referrals detail query =================
+    const referrals = await new Promise((resolve, reject) => {
+      let sql = `
+        SELECT 
+          r.id as referral_id,
+          u.id as user_id,
+          u.name,
+          u.username,
+          u.email,
+          u.created_at,
+          r.level
+        FROM referrals r 
+        JOIN users u ON r.referred_id = u.id 
+        WHERE r.referrer_id = ?
+        ORDER BY r.level
+      `;
+
+      connection.query(sql, [userId], (err, results) => {
+        if (err) return reject(err);
+        resolve(results);
+      });
+    });
+
+    // ================= Batch fetch related data =================
+    if (referrals.length > 0) {
+      const referralIds = referrals.map(r => r.user_id);
+      
+      // Limit batch size to prevent timeout (process in chunks of 1000)
+      const BATCH_SIZE = 1000;
+      const chunks = [];
+      for (let i = 0; i < referralIds.length; i += BATCH_SIZE) {
+        chunks.push(referralIds.slice(i, i + BATCH_SIZE));
+      }
+
+      // Process deposits in chunks
+      let allDeposits = [];
+      let allOverallFirstDeposits = [];
+      
+      for (const chunk of chunks) {
+        let depositsQuery, depositsParams;
+        if (startDate && endDate) {
+          depositsQuery = `
+            SELECT 
+              userId,
+              MIN(amount) as range_first_deposit,
+              SUM(amount) as range_total_deposit
+            FROM deposits 
+            WHERE userId IN (${chunk.map(() => '?').join(',')})
+            AND DATE(date) BETWEEN ? AND ?
+            GROUP BY userId
+          `;
+          depositsParams = [...chunk, startDate, endDate];
+        } else {
+          depositsQuery = `
+            SELECT 
+              userId,
+              MIN(amount) as range_first_deposit,
+              SUM(amount) as range_total_deposit
+            FROM deposits 
+            WHERE userId IN (${chunk.map(() => '?').join(',')})
+            GROUP BY userId
+          `;
+          depositsParams = [...chunk];
+        }
+
+        const chunkDeposits = await new Promise((resolve, reject) => {
+          connection.query(depositsQuery, depositsParams, (err, results) => {
+            if (err) return reject(err);
+            resolve(results);
+          });
+        });
+        allDeposits = allDeposits.concat(chunkDeposits);
+        
+        // Get overall first deposit for comparison
+        const overallFirstDepositsQuery = `
+          SELECT 
+            userId,
+            MIN(amount) as overall_first_deposit
+          FROM deposits 
+          WHERE userId IN (${chunk.map(() => '?').join(',')})
+          GROUP BY userId
+        `;
+        
+        const chunkOverallFirstDeposits = await new Promise((resolve, reject) => {
+          connection.query(overallFirstDepositsQuery, chunk, (err, results) => {
+            if (err) return reject(err);
+            resolve(results);
+          });
+        });
+        allOverallFirstDeposits = allOverallFirstDeposits.concat(chunkOverallFirstDeposits);
+      }
+
+      // Process bets in chunks
+      let allBets = [];
+      for (const chunk of chunks) {
+        let betsQuery, betsParams;
+        if (startDate && endDate) {
+          betsQuery = `
+            SELECT 
+              user_id,
+              SUM(amount) as range_total_bets
+            FROM bets 
+            WHERE user_id IN (${chunk.map(() => '?').join(',')})
+            AND DATE(placed_at) BETWEEN ? AND ?
+            GROUP BY user_id
+          `;
+          betsParams = [...chunk, startDate, endDate];
+        } else {
+          betsQuery = `
+            SELECT 
+              user_id,
+              SUM(amount) as range_total_bets
+            FROM bets 
+            WHERE user_id IN (${chunk.map(() => '?').join(',')})
+            GROUP BY user_id
+          `;
+          betsParams = [...chunk];
+        }
+
+        const chunkBets = await new Promise((resolve, reject) => {
+          connection.query(betsQuery, betsParams, (err, results) => {
+            if (err) return reject(err);
+            resolve(results);
+          });
+        });
+        allBets = allBets.concat(chunkBets);
+      }
+
+      // Process API turnover in chunks
+      let allApiBets = [];
+      for (const chunk of chunks) {
+        let apiQuery, apiParams;
+        if (startDate && endDate) {
+          apiQuery = `
+            SELECT 
+              login,
+              SUM(bet) as range_total_api_bets
+            FROM api_turnover 
+            WHERE login IN (${chunk.map(() => '?').join(',')})
+            AND DATE(created_at) BETWEEN ? AND ?
+            GROUP BY login
+          `;
+          apiParams = [...chunk, startDate, endDate];
+        } else {
+          apiQuery = `
+            SELECT 
+              login,
+              SUM(bet) as range_total_api_bets
+            FROM api_turnover 
+            WHERE login IN (${chunk.map(() => '?').join(',')})
+            GROUP BY login
+          `;
+          apiParams = [...chunk];
+        }
+
+        const chunkApiBets = await new Promise((resolve, reject) => {
+          connection.query(apiQuery, apiParams, (err, results) => {
+            if (err) return reject(err);
+            resolve(results);
+          });
+        });
+        allApiBets = allApiBets.concat(chunkApiBets);
+      }
+
+      // Process Huidu transactions in chunks
+      let allHuiduBets = [];
+      for (const chunk of chunks) {
+        let huiduQuery, huiduParams;
+        if (startDate && endDate) {
+          huiduQuery = `
+            SELECT 
+              userid,
+              SUM(bet_amount) as range_total_huidu_bets
+            FROM huidu_txn 
+            WHERE userid IN (${chunk.map(() => '?').join(',')}) 
+            AND bet_amount > 0
+            AND DATE(created_at) BETWEEN ? AND ?
+            GROUP BY userid
+          `;
+          huiduParams = [...chunk, startDate, endDate];
+        } else {
+          huiduQuery = `
+            SELECT 
+              userid,
+              SUM(bet_amount) as range_total_huidu_bets
+            FROM huidu_txn 
+            WHERE userid IN (${chunk.map(() => '?').join(',')}) 
+            AND bet_amount > 0
+            GROUP BY userid
+          `;
+          huiduParams = [...chunk];
+        }
+
+        const chunkHuiduBets = await new Promise((resolve, reject) => {
+          connection.query(huiduQuery, huiduParams, (err, results) => {
+            if (err) return reject(err);
+            resolve(results);
+          });
+        });
+        allHuiduBets = allHuiduBets.concat(chunkHuiduBets);
+      }
+
+      // Process commissions in chunks
+      let allCommissions = [];
+      for (const chunk of chunks) {
+        const commissionQuery = `
+          SELECT 
+            referred_user_id,
+            SUM(amount) as pending_commission
+          FROM referralcommissionhistory 
+          WHERE user_id = ? AND referred_user_id IN (${chunk.map(() => '?').join(',')}) AND credited = 0
+          GROUP BY referred_user_id
+        `;
+
+        const chunkCommissions = await new Promise((resolve, reject) => {
+          connection.query(commissionQuery, [userId, ...chunk], (err, results) => {
+            if (err) return reject(err);
+            resolve(results);
+          });
+        });
+        allCommissions = allCommissions.concat(chunkCommissions);
+      }
+
+      // Use the accumulated results
+      const deposits = allDeposits;
+      const overallFirstDeposits = allOverallFirstDeposits;
+      const bets = allBets;
+      const apiBets = allApiBets;
+      const huiduBets = allHuiduBets;
+      const commissions = allCommissions;
+
+      // Merge data
+      referrals.forEach(referral => {
+        // Convert user_id to string for comparison with VARCHAR columns
+        const userIdString = referral.user_id.toString();
+        
+        const deposit = deposits.find(d => d.userId === referral.user_id);
+        const overallFirstDeposit = overallFirstDeposits.find(o => o.userId === referral.user_id);
+        const bet = bets.find(b => b.user_id === referral.user_id);
+        const apiBet = apiBets.find(a => a.login === userIdString);
+        const huiduBet = huiduBets.find(h => h.userid === userIdString);
+        const commission = commissions.find(c => c.referred_user_id === referral.user_id);
+
+        referral.range_first_deposit = deposit?.range_first_deposit || 0;
+        referral.overall_first_deposit = overallFirstDeposit?.overall_first_deposit || 0;
+        referral.range_total_deposit = deposit?.range_total_deposit || 0;
+        referral.range_total_bets = bet?.range_total_bets || 0;
+        referral.range_total_api_bets = parseFloat(apiBet?.range_total_api_bets || 0);
+        referral.range_total_huidu_bets = parseFloat(huiduBet?.range_total_huidu_bets || 0);
+        referral.pending_commission = commission?.pending_commission || 0;
+        
+
+      });
+    }
+
+    // ================= Direct & Team subordinate counts =================
+    const { directSubordinates, teamSubordinates } = await new Promise((resolve, reject) => {
+      let sqlDirect = `
+        SELECT COUNT(u.id) AS directSubordinates
+        FROM referrals r
+        JOIN users u ON r.referred_id = u.id
+        WHERE r.referrer_id = ?
+          AND r.level = 1
+          ${startDate && endDate ? "AND DATE(u.created_at) BETWEEN ? AND ?" : ""}
+      `;
+
+      let sqlTeam = `
+        SELECT COUNT(u.id) AS teamSubordinates
+        FROM referrals r
+        JOIN users u ON r.referred_id = u.id
+        WHERE r.referrer_id = ? AND  r.level > 1
+          ${startDate && endDate ? "AND DATE(u.created_at) BETWEEN ? AND ?" : ""}
+      `;
+
+      let paramsDirect = [userId];
+      let paramsTeam = [userId];
+
+      if (startDate && endDate) {
+        paramsDirect.push(startDate, endDate);
+        paramsTeam.push(startDate, endDate);
+      }
+
+      connection.query(sqlDirect, paramsDirect, (err, directRes) => {
+        if (err) return reject(err);
+        connection.query(sqlTeam, paramsTeam, (err2, teamRes) => {
+          if (err2) return reject(err2);
+          resolve({
+            directSubordinates: directRes[0]?.directSubordinates || 0,
+            teamSubordinates: teamRes[0]?.teamSubordinates || 0,
+          });
+        });
+      });
+    });
+
+    // ================= Totals & Grouping =================
+    const referralsByLevel = { level1: [], level2: [], level3: [], level4: [], level5: [] };
+
+    let totalFirstDeposit = 0;
+    let totalDeposit = 0;
+    let totalBets = 0;
+    let totalApiBets = 0;
+    let totalHuiduBets = 0;
+    let grandTotalBets = 0;
+    let firstDepositorsCount = 0;
+    let totalReferrals = 0;
+
+    for (const row of referrals) {
+      const levelKey = `level${row.level}`;
+
+      // Count referrals by date (when they joined)
+      if (startDate && endDate) {
+        if (row.created_at && new Date(row.created_at).toLocaleDateString("en-CA") >= startDate &&
+            new Date(row.created_at).toLocaleDateString("en-CA") <= endDate) {
+          totalReferrals++;
+        }
+      } else {
+        totalReferrals++;
+      }
+
+      // First deposit check - only count if this is the user's very first deposit ever
+      let firstDeposit = 0;
+      if (row.range_first_deposit && row.overall_first_deposit && 
+          parseFloat(row.range_first_deposit) === parseFloat(row.overall_first_deposit)) {
+        firstDeposit = parseFloat(row.range_first_deposit);
+        totalFirstDeposit += firstDeposit;
+        firstDepositorsCount++;
+      }
+
+      // Total deposit
+      let rangeDeposit = row.range_total_deposit ? parseFloat(row.range_total_deposit) : 0;
+      totalDeposit += rangeDeposit;
+
+      // Total bets (DATE FILTERED)
+      let rangeBets = row.range_total_bets ? parseFloat(row.range_total_bets) : 0;
+      totalBets += rangeBets;
+
+      // Total API bets (DATE FILTERED)
+      let rangeApiBets = row.range_total_api_bets ? parseFloat(row.range_total_api_bets) : 0;
+      totalApiBets += rangeApiBets;
+
+            // Total Huidu bets (DATE FILTERED)
+      let rangeHuiduBets = row.range_total_huidu_bets ? parseFloat(row.range_total_huidu_bets) : 0;
+      totalHuiduBets += rangeHuiduBets;
+
+      referralsByLevel[levelKey].push({
+        id: row.id,
+        user_id: row.user_id,
+        name: row.name,
+        username: row.username,
+        email: row.email,
+        level: row.level,
+        join_date: startDate && endDate ? new Date(row.created_at).toLocaleDateString('en-CA') : null,
+        first_deposit: firstDeposit.toFixed(2),
+        overall_first_deposit: parseFloat(row.overall_first_deposit || 0).toFixed(2),
+        total_deposit: rangeDeposit.toFixed(2),
+        total_bets: rangeBets.toFixed(2),
+        total_api_bets: rangeApiBets.toFixed(2),
+        total_huidu_bets: rangeHuiduBets.toFixed(2),
+        pending_commission: parseFloat(row.pending_commission || 0).toFixed(2),
+      });
+    }
+
+    // Calculate grand total bets
+    grandTotalBets = totalBets + totalApiBets + totalHuiduBets;
+
+    // ================= Response =================
     res.json({
+      date: startDate || "All Time",
       userId,
       dateType: dateType || "all",
       dateRange: startDate ? { startDate, endDate } : "All Time",
-      totalReferrals: referrals.length,
-      referralsByLevel
+      totalReferrals,
+      note: startDate ? "Date filter applies to both referral count (when they joined) and betting/deposit data" : "All time data",
+      totalFirstDeposit: totalFirstDeposit.toFixed(2),
+      totalDeposit: totalDeposit.toFixed(2),
+      totalBets: totalBets.toFixed(2),
+      totalApiBets: totalApiBets.toFixed(2),
+      totalHuiduBets: totalHuiduBets.toFixed(2),
+      grandTotalBets: grandTotalBets.toFixed(2),
+      firstDepositorsCount,
+      directSubordinates,
+      teamSubordinates,
+      referralsByLevel,
     });
-
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Server error" });
   }
 });
 
+
+
+
+
+
 router.get("/referrals/:userId", async (req, res) => {
+  // Set timeout for this route to prevent 504 errors
+  req.setTimeout(300000); // 5 minutes
+  res.setTimeout(300000); // 5 minutes
+  
   const { userId } = req.params;
 
   try {
@@ -2392,35 +3360,198 @@ router.get("/referrals/:userId", async (req, res) => {
     const referrals = await new Promise((resolve, reject) => {
       const sql = `
           SELECT 
-            u.id,
+            r.id as referral_id,
+            u.id as user_id,
             u.name,
             u.username,
             u.email,
             DATE(u.created_at) AS join_date,
-            r.level,
-            (SELECT d.amount FROM deposits d WHERE d.userId = u.id ORDER BY d.created_at ASC LIMIT 1) AS first_deposit,
-            (SELECT SUM(d.amount) FROM deposits d WHERE d.userId = u.id) AS total_deposit,
-            (SELECT SUM(b.amount) FROM bets b WHERE b.user_id = u.id) AS total_bets,            
-            (SELECT IFNULL(SUM(c.amount), 0) FROM referralcommissionhistory c WHERE c.user_id = ? AND c.referred_user_id = u.id AND c.credited = 0 ) AS pending_commission
+            r.level
             FROM referrals r JOIN users u ON r.referred_id = u.id WHERE r.referrer_id = ? ORDER BY r.level
         `;
-      const [referrerId] = [req.params.userId];
 
-      connection.query(sql, [referrerId, referrerId], (err, results) => {
+      connection.query(sql, [userId], (err, results) => {
         if (err) return reject(err);
         resolve(results);
       });
     });
 
-    // Group referrals by level
+    // Batch fetch related data if referrals exist
+    if (referrals.length > 0) {
+      const referralIds = referrals.map(r => r.user_id);
+      
+      // Limit batch size to prevent timeout (process in chunks of 1000)
+      const BATCH_SIZE = 1000;
+      const chunks = [];
+      for (let i = 0; i < referralIds.length; i += BATCH_SIZE) {
+        chunks.push(referralIds.slice(i, i + BATCH_SIZE));
+      }
+
+      // Process deposits in chunks
+      let allDeposits = [];
+      for (const chunk of chunks) {
+        const depositsQuery = `
+          SELECT 
+            userId,
+            MIN(amount) as first_deposit,
+            SUM(amount) as total_deposit
+          FROM deposits 
+          WHERE userId IN (${chunk.map(() => '?').join(',')})
+          GROUP BY userId
+        `;
+
+        const chunkDeposits = await new Promise((resolve, reject) => {
+          connection.query(depositsQuery, chunk, (err, results) => {
+            if (err) return reject(err);
+            resolve(results);
+          });
+        });
+        allDeposits = allDeposits.concat(chunkDeposits);
+      }
+
+      // Process bets in chunks
+      let allBets = [];
+      for (const chunk of chunks) {
+        const betsQuery = `
+          SELECT 
+            user_id,
+            SUM(amount) as total_bets
+          FROM bets 
+          WHERE user_id IN (${chunk.map(() => '?').join(',')})
+          GROUP BY user_id
+        `;
+
+        const chunkBets = await new Promise((resolve, reject) => {
+          connection.query(betsQuery, chunk, (err, results) => {
+            if (err) return reject(err);
+            resolve(results);
+          });
+        });
+        allBets = allBets.concat(chunkBets);
+      }
+
+      // Process API turnover in chunks
+      let allApiBets = [];
+      for (const chunk of chunks) {
+        const apiQuery = `
+          SELECT 
+            login,
+            SUM(bet) as total_api_bets
+          FROM api_turnover 
+          WHERE login IN (${chunk.map(() => '?').join(',')})
+          GROUP BY login
+        `;
+
+        const chunkApiBets = await new Promise((resolve, reject) => {
+          connection.query(apiQuery, chunk, (err, results) => {
+            if (err) return reject(err);
+            resolve(results);
+          });
+        });
+        allApiBets = allApiBets.concat(chunkApiBets);
+      }
+
+      // Process Huidu transactions in chunks
+      let allHuiduBets = [];
+      for (const chunk of chunks) {
+        const huiduQuery = `
+          SELECT 
+            userid,
+            SUM(bet_amount) as total_huidu_bets
+          FROM huidu_txn 
+          WHERE userid IN (${chunk.map(() => '?').join(',')}) 
+          AND bet_amount > 0
+          GROUP BY userid
+        `;
+
+        const chunkHuiduBets = await new Promise((resolve, reject) => {
+          connection.query(huiduQuery, chunk, (err, results) => {
+            if (err) return reject(err);
+            resolve(results);
+          });
+        });
+        allHuiduBets = allHuiduBets.concat(chunkHuiduBets);
+      }
+
+      // Process commissions in chunks
+      let allCommissions = [];
+      for (const chunk of chunks) {
+        const commissionQuery = `
+          SELECT 
+            referred_user_id,
+            SUM(amount) as pending_commission
+          FROM referralcommissionhistory 
+          WHERE user_id = ? AND referred_user_id IN (${chunk.map(() => '?').join(',')}) AND credited = 0
+          GROUP BY referred_user_id
+        `;
+
+        const chunkCommissions = await new Promise((resolve, reject) => {
+          connection.query(commissionQuery, [userId, ...chunk], (err, results) => {
+            if (err) return reject(err);
+            resolve(results);
+          });
+        });
+        allCommissions = allCommissions.concat(chunkCommissions);
+      }
+
+      // Use the accumulated results
+      const deposits = allDeposits;
+      const bets = allBets;
+      const apiBets = allApiBets;
+      const huiduBets = allHuiduBets;
+      const commissions = allCommissions;
+
+      // Merge data
+      referrals.forEach(referral => {
+        // Convert user_id to string for comparison with VARCHAR columns
+        const userIdString = referral.user_id.toString();
+        
+        const deposit = deposits.find(d => d.userId === referral.user_id);
+        const bet = bets.find(b => b.user_id === referral.user_id);
+        const apiBet = apiBets.find(a => a.login === userIdString);
+        const huiduBet = huiduBets.find(h => h.userid === userIdString);
+        const commission = commissions.find(c => c.referred_user_id === referral.user_id);
+
+        referral.first_deposit = deposit?.first_deposit || 0;
+        referral.total_deposit = deposit?.total_deposit || 0;
+        referral.total_bets = bet?.total_bets || 0;
+        referral.total_api_bets = parseFloat(apiBet?.total_api_bets || 0);
+        referral.total_huidu_bets = parseFloat(huiduBet?.total_huidu_bets || 0);
+        referral.pending_commission = commission?.pending_commission || 0;
+      });
+
+    }
+
+    // Group referrals by level and calculate totals
     const referralsByLevel = {};
+    let totalBetsSum = 0;
+    let totalApiBetsSum = 0;
+    let totalHuiduBetsSum = 0;
+    let grandTotalBetsSum = 0;
+
     for (let i = 1; i <= 5; i++) {
       referralsByLevel[`level${i}`] = referrals.filter(ref => ref.level === i);
+      
+      // Calculate sums for this level
+      referralsByLevel[`level${i}`].forEach(ref => {
+        totalBetsSum += parseFloat(ref.total_bets || 0);
+        totalApiBetsSum += parseFloat(ref.total_api_bets || 0);
+        totalHuiduBetsSum += parseFloat(ref.total_huidu_bets || 0);
+      });
     }
+
+    // Calculate grand total
+    grandTotalBetsSum = totalBetsSum + totalApiBetsSum + totalHuiduBetsSum;
 
     res.json({
       userId,
       totalReferrals: referrals.length,
+      totalBets: {
+        bets_table: totalBetsSum.toFixed(2),
+        api_turnover_table: totalApiBetsSum.toFixed(2),
+        huidu_txn_table: totalHuiduBetsSum.toFixed(2),
+        grand_total: grandTotalBetsSum.toFixed(2)
+      },
       referralsByLevel
     });
   } catch (err) {
@@ -2915,18 +4046,199 @@ router.get('/commissions/:userId', async (req, res) => {
         if (err) return reject(err);
         resolve(results);
       });
+    });   
+  
+
+    //  Get yesterday’s commissions
+    const yesterdayCommissionsQuery = `
+      SELECT 
+        SUM(amount) AS total_amount,
+        DATE(DATE_SUB(NOW(), INTERVAL 1 DAY)) AS yesterday_date
+        FROM referralcommissionhistory
+        WHERE user_id = ? AND credited = 1
+        AND DATE(created_at) = DATE(DATE_SUB(NOW(), INTERVAL 1 DAY))
+    `;
+    let [yesterdayCommissions] = await new Promise((resolve, reject) => {
+      connection.query(yesterdayCommissionsQuery, [userId], (err, results) => {
+        if (err) return reject(err);
+        resolve(results);
+      });
     });
 
-    res.json({
+    //  Format yesterday_date cleanly (YYYY-MM-DD in IST)
+    if (yesterdayCommissions && yesterdayCommissions.yesterday_date) {
+      yesterdayCommissions.yesterday_date = new Date(yesterdayCommissions.yesterday_date)
+        .toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" }); 
+    }
+
+
+   res.json({
       userId: parseInt(userId),
       commissions: commissions.length > 0 ? commissions : [],
-      message: commissions.length > 0 ? 'Total commissions retrieved successfully' : 'No commissions found for this user'
+      yesterdayCommissions: yesterdayCommissions || { total_amount: null, yesterday_date: null },
+      message: commissions.length > 0
+        ? 'Total commissions retrieved successfully'
+        : 'No commissions found for this user'
     });
   } catch (error) {
     console.error(`Error retrieving commissions for user ${userId}:`, error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
+
+
+router.get('/commissions2/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    if (!userId || isNaN(userId)) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Valid userId is required.' 
+      });
+    }
+
+    // Check if user exists
+    const [userResult] = await new Promise((resolve, reject) => {
+      connection.query(
+        "SELECT id, username, name FROM users WHERE id = ?", 
+        [userId], 
+        (err, results) => {
+          if (err) return reject(err);
+          resolve(results);
+        }
+      );
+    });
+
+    if (!userResult) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'User not found' 
+      });
+    }
+
+    // Get yesterday's date range in IST
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yesterdayStart = new Date(yesterday.setHours(0, 0, 0, 0));
+    const yesterdayEnd = new Date(yesterday.setHours(23, 59, 59, 999));
+
+    // Get yesterday's commission details with referral chain
+    const commissionsQuery = `
+      SELECT 
+        rch.id,
+        rch.user_id,
+        rch.referred_user_id,
+        rch.level,
+        rch.rebate_level,
+        rch.amount as commission_amount,
+        rch.totalBet as bet_amount,
+        rch.cryptoname,
+        rch.credited,
+        rch.created_at,
+        u.username as referred_username,
+        u.name as referred_name
+      FROM referralcommissionhistory rch
+      JOIN users u ON rch.referred_user_id = u.id
+      WHERE rch.user_id = ? 
+      AND DATE(rch.created_at) = DATE(?)
+      ORDER BY rch.level ASC, rch.created_at DESC
+    `;
+
+    const commissions = await new Promise((resolve, reject) => {
+      connection.query(
+        commissionsQuery, 
+        [userId, yesterdayStart], 
+        (err, results) => {
+          if (err) return reject(err);
+          resolve(results);
+        }
+      );
+    });
+
+    // Get total credited commissions by cryptoname
+    const totalCommissionsQuery = `
+      SELECT 
+        cryptoname,
+        total_commissions,
+        updated_at
+      FROM usercommissions
+      WHERE userId = ?
+    `;
+
+    const totalCommissions = await new Promise((resolve, reject) => {
+      connection.query(
+        totalCommissionsQuery, 
+        [userId], 
+        (err, results) => {
+          if (err) return reject(err);
+          resolve(results);
+        }
+      );
+    });
+
+    // Group commissions by level
+    const commissionsByLevel = {};
+    let yesterdayTotal = 0;
+    let totalBetAmount = 0;
+
+    commissions.forEach(commission => {
+      const level = `level${commission.level}`;
+      if (!commissionsByLevel[level]) {
+        commissionsByLevel[level] = [];
+      }
+
+      yesterdayTotal += parseFloat(commission.commission_amount);
+      totalBetAmount += parseFloat(commission.bet_amount);
+
+      commissionsByLevel[level].push({
+        commission_id: commission.id,
+        referred_user: {
+          id: commission.referred_user_id,
+          username: commission.referred_username,
+          name: commission.referred_name
+        },
+        commission_amount: parseFloat(commission.commission_amount),
+        bet_amount: parseFloat(commission.bet_amount),
+        rebate_level: commission.rebate_level,
+        cryptoname: commission.cryptoname,
+        credited: Boolean(commission.credited),
+        created_at: commission.created_at
+      });
+    });
+
+    res.json({
+      success: true,
+      user: {
+        id: userResult.id,
+        username: userResult.username,
+        name: userResult.name
+      },
+      yesterday_date: yesterday.toISOString().split('T')[0],
+      yesterday_summary: {
+        total_commission: yesterdayTotal.toFixed(2),
+        total_bet_amount: totalBetAmount.toFixed(2),
+        total_referrals: commissions.length,
+        levels_count: Object.keys(commissionsByLevel).length
+      },
+      commissions_by_level: commissionsByLevel,
+      lifetime_commissions: totalCommissions.map(tc => ({
+        cryptoname: tc.cryptoname,
+        total_amount: parseFloat(tc.total_commissions).toFixed(2),
+        last_updated: tc.updated_at
+      }))
+    });
+
+  } catch (error) {
+    console.error('Error fetching commission details:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching commission details',
+      error: error.message
+    });
+  }
+});
+
 
 router.get('/commissions/:userId/:cryptoname', async (req, res) => {
   const { userId, cryptoname } = req.params;
@@ -3000,11 +4312,11 @@ router.get('/pending-commissions/:userId', async (req, res) => {
     }
 
     const pendingCommissionsQuery = `
-            SELECT cryptoname, SUM(amount) as pending_amount, COUNT(*) as commission_count
-            FROM referralcommissionhistory
-            WHERE user_id = ? AND credited = FALSE
-            GROUP BY cryptoname
-        `;
+     SELECT SUM(amount) AS total_amount
+     FROM referralcommissionhistory
+      WHERE user_id = ? AND credited=0
+     AND DATE(created_at) = DATE(NOW())
+    `;
     const pendingCommissions = await new Promise((resolve, reject) => {
       connection.query(pendingCommissionsQuery, [userId], (err, results) => {
         if (err) return reject(err);
