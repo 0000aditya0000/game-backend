@@ -1147,6 +1147,43 @@ router.delete('/withdrawl/:id', async (req, res) => {
 
 
 
+// ================= allusers - Withdrawal - wallet Summary =================
+router.get("/summary", async (req, res) => {
+  try {
+    const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+
+    // Query likh rahe hain
+    const [usersResult] = await connection
+      .promise()
+      .query("SELECT COUNT(*) AS totalUsers FROM users");
+
+    const [todayUsersResult] = await connection
+      .promise()
+      .query("SELECT COUNT(*) AS totalUsersJoinToday FROM users WHERE DATE(created_at) = ?", [today]);
+
+    const [withdrawalsResult] = await connection
+      .promise()
+      .query("SELECT IFNULL(SUM(balance), 0) AS todaysTotalWithdrawal FROM withdrawl WHERE status = 1 AND DATE(createdOn) = ?", [today]);
+
+        const [wallet] = await connection
+      .promise()
+      .query("SELECT SUM(balance) AS totalWalletBalanceOfUsers FROM wallet WHERE cryptoname = 'INR'");
+
+    res.json({
+      totalUsers: usersResult[0].totalUsers,
+      totalUsersJoinToday: todayUsersResult[0].totalUsersJoinToday,
+      todaysTotalWithdrawalAmount: withdrawalsResult[0].todaysTotalWithdrawal,
+      totalWalletBalanceOfUsers: Number(parseFloat(wallet[0].totalWalletBalanceOfUsers).toFixed(2)) || 0
+    });
+  } catch (error) {
+    console.error("Error fetching summary:", error);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+
+
+
 
 
 module.exports = router;
