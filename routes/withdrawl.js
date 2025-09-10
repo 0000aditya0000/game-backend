@@ -1165,14 +1165,21 @@ router.get("/summary", async (req, res) => {
       .promise()
       .query("SELECT IFNULL(SUM(balance), 0) AS todaysTotalWithdrawal FROM withdrawl WHERE status = 1 AND DATE(createdOn) = ?", [today]);
 
-        const [wallet] = await connection
+      const [totalwithdrawal] = await connection
+      .promise()
+      .query("SELECT IFNULL(SUM(balance), 0) AS totalWithdrawal FROM withdrawl WHERE status = 1 ");
+      
+
+       const [wallet] = await connection
       .promise()
       .query("SELECT SUM(balance) AS totalWalletBalanceOfUsers FROM wallet WHERE cryptoname = 'INR'");
+
 
     res.json({
       totalUsers: usersResult[0].totalUsers,
       totalUsersJoinToday: todayUsersResult[0].totalUsersJoinToday,
       todaysTotalWithdrawalAmount: withdrawalsResult[0].todaysTotalWithdrawal,
+      totalWithdrawal:totalwithdrawal[0].totalWithdrawal,
       totalWalletBalanceOfUsers: Number(parseFloat(wallet[0].totalWalletBalanceOfUsers).toFixed(2)) || 0
     });
   } catch (error) {

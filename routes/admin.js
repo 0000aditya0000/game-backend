@@ -351,5 +351,98 @@ router.post("/wallet/add-balance", async (req, res) => {
 });
 
 
+// =================== Get Today's Bet/Win/Profit ===================
+router.get("/today-bet-stats", async (req, res) => {
+  try {
+    const today = new Date().toISOString().split("T")[0]; // YYYY-MM-DD format
+
+    // 1. api_turnover table
+    const [turnover] = await connection.promise().query(
+      `SELECT 
+          IFNULL(SUM(bet),0) as totalBet,
+          IFNULL(SUM(win),0) as totalWin
+       FROM api_turnover
+       WHERE DATE(created_at) = ?`,
+      [today]
+    );
+
+    // 2. bets_5d table
+    const [bets5d] = await connection.promise().query(
+      `SELECT 
+          IFNULL(SUM(amount),0) as totalBet,
+          IFNULL(SUM(winnings),0) as totalWin
+       FROM bets_5d
+       WHERE DATE(created_at) = ?`,
+      [today]
+    );
+
+    // 3. bets_trx table
+    const [betsTrx] = await connection.promise().query(
+     `SELECT 
+          IFNULL(SUM(amount),0) as totalBet,
+          IFNULL(SUM(winnings),0) as totalWin
+       FROM bets_trx
+       WHERE DATE(created_at) = ?`,
+      [today]
+    );
+
+    // 4. huidu_txn table
+    const [huidu] = await connection.promise().query(
+      `SELECT 
+          IFNULL(SUM(bet_amount),0) as totalBet,
+          IFNULL(SUM(win_amount),0) as totalWin
+       FROM huidu_txn
+       WHERE DATE(created_at) = ?`,
+      [today]
+    );
+
+    // 5. bets + result join
+    const [betsResult] = await connection.promise().query(
+      `SELECT 
+          IFNULL(SUM(b.amount),0) AS totalBet,
+          IFNULL(SUM(
+              CASE 
+                  WHEN b.bet_type = 'number' AND b.bet_value = r.result_number THEN b.amount * 1.9
+                  WHEN b.bet_type = 'color'  AND b.bet_value = r.result_color  THEN b.amount * 1.9
+                  WHEN b.bet_type = 'size'   AND b.bet_value = r.result_size   THEN b.amount * 1.9
+                  ELSE 0 
+              END
+          ),0) AS totalWin
+       FROM bets b
+       JOIN result r 
+         ON b.period_number = r.period_number 
+        AND b.duration = r.duration
+       WHERE DATE(b.placed_at) = ?`,
+      [today]
+    );
+
+    // Final totals (sab tables add karke)
+    const todaysTotalBet =
+      parseFloat(turnover[0].totalBet) +
+      parseFloat(bets5d[0].totalBet) +
+      parseFloat(betsTrx[0].totalBet) +
+      parseFloat(huidu[0].totalBet) +
+      parseFloat(betsResult[0].totalBet);
+
+    const todaysTotalWin =
+      parseFloat(turnover[0].totalWin) +
+      parseFloat(bets5d[0].totalWin) +
+      parseFloat(betsTrx[0].totalWin) +
+      parseFloat(huidu[0].totalWin) +
+      parseFloat(betsResult[0].totalWin);
+
+    const todaysTotalProfit = todaysTotalBet - todaysTotalWin;
+
+    res.json({
+      todaysTotalBet: todaysTotalBet.toFixed(2),
+      todaysTotalWin: todaysTotalWin.toFixed(2),
+      todaysTotalProfit: todaysTotalProfit.toFixed(2),
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
 
 module.exports = router;
