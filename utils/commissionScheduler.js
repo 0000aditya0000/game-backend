@@ -103,10 +103,10 @@ async function creditCommissions() {
 //     scheduled: true,
 //     timezone: 'UTC'
 // });
-cron.schedule('30 19 * * *', creditCommissions, {
-  scheduled: true,
-  timezone: 'UTC'
-});
+// cron.schedule('30 19 * * *', creditCommissions, {
+//   scheduled: true,
+//   timezone: 'UTC'
+// });
 
 console.log('Commission scheduler loaded. Cron job scheduled for 1:00 AM IST.');
 

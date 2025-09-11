@@ -378,10 +378,10 @@ async function processDailyBettingCommissions() {
 }
 
 // Schedule cron job to run daily at 00:00 (11:59 PM)
-cron.schedule('29 18 * * *', processDailyBettingCommissions, {
-  scheduled: true,
-  timezone: 'UTC'
-});
+// cron.schedule('29 18 * * *', processDailyBettingCommissions, {
+//   scheduled: true,
+//   timezone: 'UTC'
+// });
 
 console.log('Daily betting commission scheduler loaded. Cron job scheduled for 12:00 AM IST daily.');
 
