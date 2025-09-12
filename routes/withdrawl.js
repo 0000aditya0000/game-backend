@@ -1173,14 +1173,14 @@ router.get("/summary", async (req, res) => {
     const [withdrawalsResult] = await connection
       .promise()
       .query(
-        "SELECT IFNULL(SUM(balance), 0) AS todaysTotalWithdrawal FROM withdrawl WHERE status = 1 AND DATE(createdOn) = ?",
+        "SELECT IFNULL(SUM(balance), 0) AS todaysTotalWithdrawal FROM withdrawl WHERE status = 1 AND DATE(updated_at) = ?",
         [today]
       );
 
     const [yesterdayWithdrawal] = await connection
       .promise()
       .query(
-        "SELECT IFNULL(SUM(balance), 0) AS yesterdayTotalWithdrawal FROM withdrawl WHERE status = 1 AND DATE(createdOn) = ?",
+        "SELECT IFNULL(SUM(balance), 0) AS yesterdayTotalWithdrawal FROM withdrawl WHERE status = 1 AND DATE(updated_at) = ?",
         [yesterdayStr]
       );
 
