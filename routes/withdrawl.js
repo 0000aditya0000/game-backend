@@ -1198,7 +1198,7 @@ router.get("/summary", async (req, res) => {
     const [todayRechargeAmount] = await connection
       .promise()
       .query(
-        "SELECT IFNULL(SUM(recharge_amount),0) AS todayTotalRechargeAmount FROM recharge WHERE recharge_status = 'success' AND DATE(created_at) = ?",
+        "SELECT IFNULL(SUM(recharge_amount),0) AS todayTotalRechargeAmount FROM recharge WHERE recharge_status = 'success' AND DATE(date) = ?",
         [today]
       );
 
@@ -1206,7 +1206,7 @@ router.get("/summary", async (req, res) => {
     const [yesterdayRechargeAmount] = await connection
       .promise()
       .query(
-        "SELECT IFNULL(SUM(recharge_amount),0) AS yesterdayTotalRechargeAmount FROM recharge WHERE recharge_status = 'success' AND DATE(created_at) = ?",
+        "SELECT IFNULL(SUM(recharge_amount),0) AS yesterdayTotalRechargeAmount FROM recharge WHERE recharge_status = 'success' AND DATE(date) = ?",
         [yesterdayStr]
       );
 
@@ -1221,7 +1221,7 @@ router.get("/summary", async (req, res) => {
     const [todayRechargeCount] = await connection
       .promise()
       .query(
-        "SELECT COUNT(*) AS numberOfSuccessfulRechargeToday FROM recharge WHERE recharge_status = 'success' AND DATE(created_at) = ?",
+        "SELECT COUNT(*) AS numberOfSuccessfulRechargeToday FROM recharge WHERE recharge_status = 'success' AND DATE(date) = ?",
         [today]
       );
 
