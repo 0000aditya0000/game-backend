@@ -1146,42 +1146,196 @@ router.delete('/withdrawl/:id', async (req, res) => {
 });
 
 
+// // ================= allusers - Withdrawal - wallet Summary =================
+// router.get("/summary", async (req, res) => {
+//   try {
+//     const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+
+//     // yesterday date
+//     const yesterday = new Date();
+//     yesterday.setDate(yesterday.getDate() - 1);
+//     const yesterdayStr = yesterday.toISOString().slice(0, 10);
+
+//     //----------------- total user/ today /yersday join user ------------------------------
+//     const [usersResult] = await connection
+//       .promise()
+//       .query("SELECT COUNT(*) AS totalUsers FROM users");
+
+//     const [todayUsersResult] = await connection
+//       .promise()
+//       .query("SELECT COUNT(*) AS totalUsersJoinToday FROM users WHERE DATE(created_at) = ?", [today]);
+
+//     const [yesterdayUsersResult] = await connection
+//       .promise()
+//       .query("SELECT COUNT(*) AS totalUsersJoinYesterday FROM users WHERE DATE(created_at) = ?", [yesterdayStr]);
+
+//     //----------------- total/yesterday/today withdrawal / total withdrawal----------------------      
+//     const [withdrawalsResult] = await connection
+//       .promise()
+//       .query(
+//         "SELECT IFNULL(SUM(balance), 0) AS todaysTotalWithdrawal FROM withdrawl WHERE status = 1 AND DATE(updated_at) = ?",
+//         [today]
+//       );
+
+//     const [yesterdayWithdrawal] = await connection
+//       .promise()
+//       .query(
+//         "SELECT IFNULL(SUM(balance), 0) AS yesterdayTotalWithdrawal FROM withdrawl WHERE status = 1 AND DATE(updated_at) = ?",
+//         [yesterdayStr]
+//       );
+
+//     const [totalwithdrawal] = await connection
+//       .promise()
+//       .query("SELECT IFNULL(SUM(balance), 0) AS totalWithdrawal FROM withdrawl WHERE status = 1");
+
+//     //----------------- wallet balance of users----------------------
+//     const [wallet] = await connection
+//       .promise()
+//       .query("SELECT SUM(balance) AS totalWalletBalanceOfUsers FROM wallet WHERE cryptoname = 'INR'");
+
+//     //----------------- recharge stats ----------------------
+//     //  Today’s successful recharge total amount
+//     const [todayRechargeAmount] = await connection
+//       .promise()
+//       .query(
+//         "SELECT IFNULL(SUM(recharge_amount),0) AS todayTotalRechargeAmount FROM recharge WHERE recharge_status = 'success' AND DATE(date) = ?",
+//         [today]
+//       );
+
+//     //  Yesterday’s successful recharge total amount
+//     const [yesterdayRechargeAmount] = await connection
+//       .promise()
+//       .query(
+//         "SELECT IFNULL(SUM(recharge_amount),0) AS yesterdayTotalRechargeAmount FROM recharge WHERE recharge_status = 'success' AND DATE(date) = ?",
+//         [yesterdayStr]
+//       );
+
+//     //  All-time successful recharge total amount
+//     const [alltimeRechargeAmount] = await connection
+//       .promise()
+//       .query(
+//         "SELECT IFNULL(SUM(recharge_amount),0) AS alltimeTotalRechargeAmount FROM recharge WHERE recharge_status = 'success'"
+//       );
+
+//     //  Number of successful recharges today
+//     const [todayRechargeCount] = await connection
+//       .promise()
+//       .query(
+//         "SELECT COUNT(*) AS numberOfSuccessfulRechargeToday FROM recharge WHERE recharge_status = 'success' AND DATE(date) = ?",
+//         [today]
+//       );
+
+//     //  Number of successful recharges all-time
+//     const [alltimeRechargeCount] = await connection
+//       .promise()
+//       .query(
+//         "SELECT COUNT(*) AS numberOfSuccessfulRechargeAlltime FROM recharge WHERE recharge_status = 'success'"
+//       );
+
+//     res.json({
+//       totalUsers: usersResult[0].totalUsers,
+//       totalUsersJoinToday: todayUsersResult[0].totalUsersJoinToday,
+//       totalUsersJoinYesterday: yesterdayUsersResult[0].totalUsersJoinYesterday,
+
+//       todaysTotalWithdrawalAmount: withdrawalsResult[0].todaysTotalWithdrawal,
+//       yesterdayTotalWithdrawalAmount: yesterdayWithdrawal[0].yesterdayTotalWithdrawal,
+//       totalWithdrawal: totalwithdrawal[0].totalWithdrawal,
+
+//       totalWalletBalanceOfUsers: Number(parseFloat(wallet[0].totalWalletBalanceOfUsers).toFixed(2)) || 0,
+
+//       // recharge stats
+//       todayTotalRechargeAmount: Number(parseFloat(todayRechargeAmount[0].todayTotalRechargeAmount).toFixed(2)) || 0,
+//       yesterdayTotalRechargeAmount: Number(parseFloat(yesterdayRechargeAmount[0].yesterdayTotalRechargeAmount).toFixed(2)) || 0,
+//       alltimeTotalRechargeAmount: Number(parseFloat(alltimeRechargeAmount[0].alltimeTotalRechargeAmount).toFixed(2)) || 0,
+
+//       numberOfSuccessfulRechargeToday: todayRechargeCount[0].numberOfSuccessfulRechargeToday,
+//       numberOfSuccessfulRechargeAlltime: alltimeRechargeCount[0].numberOfSuccessfulRechargeAlltime
+//     });
+//   } catch (error) {
+//     console.error("Error fetching summary:", error);
+//     res.status(500).json({ error: "Internal Server Error" });
+//   }
+// });
+
 // ================= allusers - Withdrawal - wallet Summary =================
+
+
+
+// Function to get IST date (YYYY-MM-DD)
+function getISTDate(offsetDays = 0) {
+  const now = new Date();
+  const istTime = new Date(now.getTime() + (5.5 * 60 * 60 * 1000));
+  istTime.setDate(istTime.getDate() + offsetDays);
+  return istTime.toISOString().split("T")[0];
+}
+
+// Function to get IST date range in UTC for database queries
+function getISTDateRangeInUTC(offsetDays = 0) {
+  // Get the IST date we want
+  const now = new Date();
+  const istTime = new Date(now.getTime() + (5.5 * 60 * 60 * 1000));
+  istTime.setDate(istTime.getDate() + offsetDays);
+  
+  // Create start and end of day in IST
+  const startOfDayIST = new Date(istTime);
+  startOfDayIST.setHours(0, 0, 0, 0);
+  
+  const endOfDayIST = new Date(istTime);
+  endOfDayIST.setHours(23, 59, 59, 999);
+  
+  // Convert back to UTC for database queries
+  const startOfDayUTC = new Date(startOfDayIST.getTime() - (5.5 * 60 * 60 * 1000));
+  const endOfDayUTC = new Date(endOfDayIST.getTime() - (5.5 * 60 * 60 * 1000));
+  
+  return {
+    start: startOfDayUTC.toISOString().slice(0, 19).replace('T', ' '),
+    end: endOfDayUTC.toISOString().slice(0, 19).replace('T', ' ')
+  };
+}
+
 router.get("/summary", async (req, res) => {
   try {
-    const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+    // Get IST date ranges converted to UTC
+    const todayRange = getISTDateRangeInUTC(0);      // Today in IST
+    const yesterdayRange = getISTDateRangeInUTC(-1); // Yesterday in IST
 
-    // yesterday date
-    const yesterday = new Date();
-    yesterday.setDate(yesterday.getDate() - 1);
-    const yesterdayStr = yesterday.toISOString().slice(0, 10);
+    console.log("todayRange (UTC):", todayRange);
+    console.log("yesterdayRange (UTC):", yesterdayRange);
+    console.log("Current IST Date:", getISTDate(0));
+    console.log("Current UTC Date:", new Date().toISOString().slice(0, 10));
 
-    //----------------- total user/ today /yersday join user ------------------------------
+    //----------------- total user/ today / yesterday join user ------------------------------
     const [usersResult] = await connection
       .promise()
       .query("SELECT COUNT(*) AS totalUsers FROM users");
 
     const [todayUsersResult] = await connection
       .promise()
-      .query("SELECT COUNT(*) AS totalUsersJoinToday FROM users WHERE DATE(created_at) = ?", [today]);
+      .query(
+        "SELECT COUNT(*) AS totalUsersJoinToday FROM users WHERE created_at >= ? AND created_at <= ?", 
+        [todayRange.start, todayRange.end]
+      );
 
     const [yesterdayUsersResult] = await connection
       .promise()
-      .query("SELECT COUNT(*) AS totalUsersJoinYesterday FROM users WHERE DATE(created_at) = ?", [yesterdayStr]);
+      .query(
+        "SELECT COUNT(*) AS totalUsersJoinYesterday FROM users WHERE created_at >= ? AND created_at <= ?", 
+        [yesterdayRange.start, yesterdayRange.end]
+      );
 
     //----------------- total/yesterday/today withdrawal / total withdrawal----------------------      
     const [withdrawalsResult] = await connection
       .promise()
       .query(
-        "SELECT IFNULL(SUM(balance), 0) AS todaysTotalWithdrawal FROM withdrawl WHERE status = 1 AND DATE(updated_at) = ?",
-        [today]
+        "SELECT IFNULL(SUM(balance), 0) AS todaysTotalWithdrawal FROM withdrawl WHERE status = 1 AND updated_at >= ? AND updated_at <= ?",
+        [todayRange.start, todayRange.end]
       );
 
     const [yesterdayWithdrawal] = await connection
       .promise()
       .query(
-        "SELECT IFNULL(SUM(balance), 0) AS yesterdayTotalWithdrawal FROM withdrawl WHERE status = 1 AND DATE(updated_at) = ?",
-        [yesterdayStr]
+        "SELECT IFNULL(SUM(balance), 0) AS yesterdayTotalWithdrawal FROM withdrawl WHERE status = 1 AND updated_at >= ? AND updated_at <= ?",
+        [yesterdayRange.start, yesterdayRange.end]
       );
 
     const [totalwithdrawal] = await connection
@@ -1194,38 +1348,33 @@ router.get("/summary", async (req, res) => {
       .query("SELECT SUM(balance) AS totalWalletBalanceOfUsers FROM wallet WHERE cryptoname = 'INR'");
 
     //----------------- recharge stats ----------------------
-    //  Today’s successful recharge total amount
     const [todayRechargeAmount] = await connection
       .promise()
       .query(
-        "SELECT IFNULL(SUM(recharge_amount),0) AS todayTotalRechargeAmount FROM recharge WHERE recharge_status = 'success' AND DATE(date) = ?",
-        [today]
+        "SELECT IFNULL(SUM(recharge_amount),0) AS todayTotalRechargeAmount FROM recharge WHERE recharge_status = 'success' AND date >= ? AND date <= ?",
+        [todayRange.start, todayRange.end]
       );
 
-    //  Yesterday’s successful recharge total amount
     const [yesterdayRechargeAmount] = await connection
       .promise()
       .query(
-        "SELECT IFNULL(SUM(recharge_amount),0) AS yesterdayTotalRechargeAmount FROM recharge WHERE recharge_status = 'success' AND DATE(date) = ?",
-        [yesterdayStr]
+        "SELECT IFNULL(SUM(recharge_amount),0) AS yesterdayTotalRechargeAmount FROM recharge WHERE recharge_status = 'success' AND date >= ? AND date <= ?",
+        [yesterdayRange.start, yesterdayRange.end]
       );
 
-    //  All-time successful recharge total amount
     const [alltimeRechargeAmount] = await connection
       .promise()
       .query(
         "SELECT IFNULL(SUM(recharge_amount),0) AS alltimeTotalRechargeAmount FROM recharge WHERE recharge_status = 'success'"
       );
 
-    //  Number of successful recharges today
     const [todayRechargeCount] = await connection
       .promise()
       .query(
-        "SELECT COUNT(*) AS numberOfSuccessfulRechargeToday FROM recharge WHERE recharge_status = 'success' AND DATE(date) = ?",
-        [today]
+        "SELECT COUNT(*) AS numberOfSuccessfulRechargeToday FROM recharge WHERE recharge_status = 'success' AND date >= ? AND date <= ?",
+        [todayRange.start, todayRange.end]
       );
 
-    //  Number of successful recharges all-time
     const [alltimeRechargeCount] = await connection
       .promise()
       .query(
@@ -1243,127 +1392,18 @@ router.get("/summary", async (req, res) => {
 
       totalWalletBalanceOfUsers: Number(parseFloat(wallet[0].totalWalletBalanceOfUsers).toFixed(2)) || 0,
 
-      // recharge stats
       todayTotalRechargeAmount: Number(parseFloat(todayRechargeAmount[0].todayTotalRechargeAmount).toFixed(2)) || 0,
       yesterdayTotalRechargeAmount: Number(parseFloat(yesterdayRechargeAmount[0].yesterdayTotalRechargeAmount).toFixed(2)) || 0,
       alltimeTotalRechargeAmount: Number(parseFloat(alltimeRechargeAmount[0].alltimeTotalRechargeAmount).toFixed(2)) || 0,
 
       numberOfSuccessfulRechargeToday: todayRechargeCount[0].numberOfSuccessfulRechargeToday,
-      numberOfSuccessfulRechargeAlltime: alltimeRechargeCount[0].numberOfSuccessfulRechargeAlltime
-    });
-  } catch (error) {
-    console.error("Error fetching summary:", error);
-    res.status(500).json({ error: "Internal Server Error" });
-  }
-});
+      numberOfSuccessfulRechargeAlltime: alltimeRechargeCount[0].numberOfSuccessfulRechargeAlltime,
 
-// ================= allusers - Withdrawal - wallet Summary =================
-router.get("/summary2", async (req, res) => {
-  try {
-    const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
-
-    // yesterday date
-    const yesterday = new Date();
-    yesterday.setDate(yesterday.getDate() - 1);
-    const yesterdayStr = yesterday.toISOString().slice(0, 10);
-
-    //----------------- total user/ today join user ------------------------------
-    const [usersResult] = await connection
-      .promise()
-      .query("SELECT COUNT(*) AS totalUsers FROM users");
-
-    const [todayUsersResult] = await connection
-      .promise()
-      .query("SELECT COUNT(*) AS totalUsersJoinToday FROM users WHERE DATE(created_at) = ?", [today]);
-
-    const [yesterdayUsersResult] = await connection
-      .promise()
-      .query("SELECT COUNT(*) AS totalUsersJoinYesterday FROM users WHERE DATE(created_at) = ?", [yesterdayStr]);
-
-    //----------------- todays withdrawal / total withdrawal----------------------      
-    const [withdrawalsResult] = await connection
-      .promise()
-      .query(
-        "SELECT IFNULL(SUM(balance), 0) AS todaysTotalWithdrawal FROM withdrawl WHERE status = 1 AND DATE(createdOn) = ?",
-        [today]
-      );
-
-    const [yesterdayWithdrawal] = await connection
-      .promise()
-      .query(
-        "SELECT IFNULL(SUM(balance), 0) AS yesterdayTotalWithdrawal FROM withdrawl WHERE status = 1 AND DATE(createdOn) = ?",
-        [yesterdayStr]
-      );
-
-    const [totalwithdrawal] = await connection
-      .promise()
-      .query("SELECT IFNULL(SUM(balance), 0) AS totalWithdrawal FROM withdrawl WHERE status = 1");
-
-    //----------------- wallet balance of users----------------------
-    const [wallet] = await connection
-      .promise()
-      .query("SELECT SUM(balance) AS totalWalletBalanceOfUsers FROM wallet WHERE cryptoname = 'INR'");
-
-    //----------------- recharge stats ----------------------
-    //  Today’s successful recharge total amount
-    const [todayRechargeAmount] = await connection
-      .promise()
-      .query(
-        "SELECT IFNULL(SUM(recharge_amount),0) AS todayTotalRechargeAmount FROM recharge WHERE recharge_status = 'success' AND DATE(created_at) = ?",
-        [today]
-      );
-
-    //  Yesterday’s successful recharge total amount
-    const [yesterdayRechargeAmount] = await connection
-      .promise()
-      .query(
-        "SELECT IFNULL(SUM(recharge_amount),0) AS yesterdayTotalRechargeAmount FROM recharge WHERE recharge_status = 'success' AND DATE(created_at) = ?",
-        [yesterdayStr]
-      );
-
-    //  All-time successful recharge total amount
-    const [alltimeRechargeAmount] = await connection
-      .promise()
-      .query(
-        "SELECT IFNULL(SUM(recharge_amount),0) AS alltimeTotalRechargeAmount FROM recharge WHERE recharge_status = 'success'"
-      );
-
-    //  Number of successful recharges today
-    const [todayRechargeCount] = await connection
-      .promise()
-      .query(
-        "SELECT COUNT(*) AS numberOfSuccessfulRechargeToday FROM recharge WHERE recharge_status = 'success' AND DATE(created_at) = ?",
-        [today]
-      );
-
-    //  Number of successful recharges all-time
-    const [alltimeRechargeCount] = await connection
-      .promise()
-      .query(
-        "SELECT COUNT(*) AS numberOfSuccessfulRechargeAlltime FROM recharge WHERE recharge_status = 'success'"
-      );
-
-    //  Structured response
-    res.json({
-      users: {
-        total: usersResult[0].totalUsers,
-        today: todayUsersResult[0].totalUsersJoinToday,
-        yesterday: yesterdayUsersResult[0].totalUsersJoinYesterday
-      },
-      withdrawals: {
-        total: totalwithdrawal[0].totalWithdrawal,
-        today: withdrawalsResult[0].todaysTotalWithdrawal,
-        yesterday: yesterdayWithdrawal[0].yesterdayTotalWithdrawal
-      },
-      wallet: {
-        totalBalance: Number(parseFloat(wallet[0].totalWalletBalanceOfUsers).toFixed(2)) || 0
-      },
-      recharges: {
-        totalAmount: Number(parseFloat(alltimeRechargeAmount[0].alltimeTotalRechargeAmount).toFixed(2)) || 0,
-        todayAmount: Number(parseFloat(todayRechargeAmount[0].todayTotalRechargeAmount).toFixed(2)) || 0,
-        yesterdayAmount: Number(parseFloat(yesterdayRechargeAmount[0].yesterdayTotalRechargeAmount).toFixed(2)) || 0,
-        totalCount: alltimeRechargeCount[0].numberOfSuccessfulRechargeAlltime,
-        todayCount: todayRechargeCount[0].numberOfSuccessfulRechargeToday
+      // Debug info (remove in production)
+      debugInfo: {
+        todayIST: getISTDate(0),
+        todayUTCRange: `${todayRange.start} to ${todayRange.end}`,
+        yesterdayUTCRange: `${yesterdayRange.start} to ${yesterdayRange.end}`
       }
     });
   } catch (error) {
@@ -1371,8 +1411,6 @@ router.get("/summary2", async (req, res) => {
     res.status(500).json({ error: "Internal Server Error" });
   }
 });
-
-
 
 
 module.exports = router;

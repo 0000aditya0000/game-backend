@@ -27,6 +27,9 @@ const formatDate = (d) =>
 const start = formatDate(start1);
 const end = formatDate(end1);
 
+    console.log('Start of day (IST):', start);
+    console.log('End of day (IST):', end);
+
     const query = `
       SELECT recharge_amount as amount
       FROM recharge
